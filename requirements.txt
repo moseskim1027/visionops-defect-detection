@@ -1,0 +1,27 @@
+# Core ML
+ultralytics==8.3.40
+torch==2.5.1
+torchvision==0.20.1
+
+# MLflow
+mlflow==2.19.0
+
+# Inference API
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+Pillow==11.1.0
+
+# Monitoring
+evidently==0.4.45
+prometheus-client==0.21.1
+
+# Airflow (install separately — see docs)
+# apache-airflow==2.10.4
+
+# Data utilities
+numpy==2.2.1
+pandas==2.2.3
+pycocotools==2.0.8
+pyyaml==6.0.2
+tqdm==4.67.1
