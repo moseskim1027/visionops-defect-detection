@@ -1,4 +1,12 @@
-"""Tests for src/monitoring/drift_detection.py"""
+"""Tests for src/monitoring/drift_detection.py
+
+Evidently path tests use real Casting val images (data/raw/vision/Casting/val/).
+They are skipped automatically when the dataset is not present (e.g. CI without
+the raw data volume), so the test suite always passes in both environments.
+
+The only remaining mock is the edge-case test for a missing DatasetDriftMetric
+in Evidently's output — that branch cannot be exercised with real data.
+"""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -7,10 +15,18 @@ import numpy as np
 import pytest
 from PIL import Image as PILImage
 
+from src.data.drift_simulator import apply_brightness
 from src.monitoring.drift_detection import extract_image_features, run_drift_report
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Real-data constants
+# ---------------------------------------------------------------------------
+
+CASTING_VAL = Path("data/raw/vision/Casting/val")
+HAS_DATASET = CASTING_VAL.exists() and len(list(CASTING_VAL.glob("*.jpg"))) >= 50
+
+# ---------------------------------------------------------------------------
+# Helpers (used by skip-logic tests)
 # ---------------------------------------------------------------------------
 
 
@@ -66,18 +82,15 @@ class TestExtractImageFeatures:
 
     def test_uniform_image_has_zero_contrast(self, tmp_path):
         img_path = tmp_path / "uniform.jpg"
-        # Pure red image — grayscale std should be ~0
         _save_image(img_path, (200, 200, 200))
         df = extract_image_features([img_path])
         assert df.iloc[0]["contrast"] == pytest.approx(0.0, abs=1e-3)
 
     def test_sharpness_higher_for_edge_image(self, tmp_path):
         """An image with a sharp edge should have higher gradient energy."""
-        # Flat image
         flat = tmp_path / "flat.jpg"
         _save_image(flat, (128, 128, 128))
 
-        # Edge image: left half black, right half white
         arr = np.zeros((16, 16, 3), dtype=np.uint8)
         arr[:, 8:, :] = 255
         edge = tmp_path / "edge.png"
@@ -129,100 +142,92 @@ class TestRunDriftReportSkip:
 
 
 # ---------------------------------------------------------------------------
-# run_drift_report — Evidently path (mocked)
+# run_drift_report — real Casting images + real Evidently
 # ---------------------------------------------------------------------------
 
-_EVIDENTLY_DRIFT_RESULT = {
-    "metrics": [
-        {
-            "metric": "DatasetDriftMetric",
-            "result": {
-                "dataset_drift": True,
-                "share_of_drifted_columns": 0.75,
-                "drift_by_columns": {
-                    "brightness_mean": {"drift_detected": True, "drift_score": 0.01},
-                    "brightness_std": {"drift_detected": False, "drift_score": 0.15},
-                    "contrast": {"drift_detected": True, "drift_score": 0.02},
-                    "sharpness": {"drift_detected": True, "drift_score": 0.01},
-                },
-            },
-        }
-    ]
-}
-
-_EVIDENTLY_NO_DRIFT_RESULT = {
-    "metrics": [
-        {
-            "metric": "DatasetDriftMetric",
-            "result": {
-                "dataset_drift": False,
-                "share_of_drifted_columns": 0.0,
-                "drift_by_columns": {
-                    "brightness_mean": {"drift_detected": False, "drift_score": 0.5},
-                    "brightness_std": {"drift_detected": False, "drift_score": 0.4},
-                    "contrast": {"drift_detected": False, "drift_score": 0.3},
-                    "sharpness": {"drift_detected": False, "drift_score": 0.4},
-                },
-            },
-        }
-    ]
-}
+# Drift config that matches the actual Casting val set (51 images ≥ min 50)
+_DRIFT_CFG_YAML = "drift:\n  min_reference_samples: 50\n  min_current_samples: 20\n"
 
 
-@pytest.fixture()
-def dirs_with_enough_images(tmp_path):
-    cfg = tmp_path / "drift.yaml"
-    cfg.write_text("drift:\n  min_reference_samples: 5\n  min_current_samples: 3\n")
-    ref = _make_image_dir(tmp_path, "ref", n=6, color=(100, 100, 100))
-    cur = _make_image_dir(tmp_path, "cur", n=4, color=(200, 200, 200))
-    return ref, cur, cfg
+@pytest.fixture(scope="module")
+def drift_config(tmp_path_factory) -> Path:
+    cfg = tmp_path_factory.mktemp("cfg") / "drift.yaml"
+    cfg.write_text(_DRIFT_CFG_YAML)
+    return cfg
 
 
-class TestRunDriftReportEvidently:
-    def _mock_report(self, as_dict_return: dict) -> MagicMock:
-        mock_instance = MagicMock()
-        mock_instance.as_dict.return_value = as_dict_return
-        mock_cls = MagicMock(return_value=mock_instance)
-        return mock_cls
+@pytest.fixture(scope="module")
+def bright_batch(tmp_path_factory) -> Path:
+    """25 Casting val images with factor-2.5 brightness — extreme drift."""
+    out = tmp_path_factory.mktemp("bright_batch")
+    images = sorted(CASTING_VAL.glob("*.jpg"))[:25]
+    for p in images:
+        img = PILImage.open(p).convert("RGB")
+        apply_brightness(img, factor=2.5).save(out / p.name)
+    return out
 
-    def test_detects_drift(self, dirs_with_enough_images):
-        ref, cur, cfg = dirs_with_enough_images
-        mock_cls = self._mock_report(_EVIDENTLY_DRIFT_RESULT)
-        with patch("evidently.report.Report", mock_cls):
-            with patch("evidently.metric_preset.DataDriftPreset"):
-                result = run_drift_report(ref, cur, config_path=cfg)
-        assert result["drift_detected"] is True
-        assert result["drift_share"] == pytest.approx(0.75)
-        assert "brightness_mean" in result["drifted_features"]
-        assert "brightness_std" not in result["drifted_features"]
+
+@pytest.mark.skipif(not HAS_DATASET, reason="Casting val images not found")
+class TestRunDriftReportRealData:
+    def test_detects_brightness_drift(self, bright_batch, drift_config):
+        """Extreme brightness shift on real images must be detected."""
+        result = run_drift_report(CASTING_VAL, bright_batch, config_path=drift_config)
         assert result["skipped"] is False
+        assert result["drift_detected"] is True
 
-    def test_no_drift(self, dirs_with_enough_images):
-        ref, cur, cfg = dirs_with_enough_images
-        mock_cls = self._mock_report(_EVIDENTLY_NO_DRIFT_RESULT)
-        with patch("evidently.report.Report", mock_cls):
-            with patch("evidently.metric_preset.DataDriftPreset"):
-                result = run_drift_report(ref, cur, config_path=cfg)
+    def test_brightness_mean_flagged_as_drifted(self, bright_batch, drift_config):
+        """brightness_mean should be among the drifted features."""
+        result = run_drift_report(CASTING_VAL, bright_batch, config_path=drift_config)
+        assert "brightness_mean" in result["drifted_features"]
+
+    def test_no_drift_same_source(self, drift_config):
+        """Reference and current from the same directory → no drift."""
+        result = run_drift_report(CASTING_VAL, CASTING_VAL, config_path=drift_config)
+        assert result["skipped"] is False
         assert result["drift_detected"] is False
-        assert result["drifted_features"] == []
-        assert result["drift_share"] == pytest.approx(0.0)
 
-    def test_feature_stats_populated(self, dirs_with_enough_images):
-        ref, cur, cfg = dirs_with_enough_images
-        mock_cls = self._mock_report(_EVIDENTLY_DRIFT_RESULT)
-        with patch("evidently.report.Report", mock_cls):
+    def test_return_structure(self, bright_batch, drift_config):
+        result = run_drift_report(CASTING_VAL, bright_batch, config_path=drift_config)
+        assert set(result.keys()) >= {
+            "drift_detected",
+            "drifted_features",
+            "drift_share",
+            "feature_stats",
+            "skipped",
+        }
+
+    def test_drift_share_in_valid_range(self, bright_batch, drift_config):
+        result = run_drift_report(CASTING_VAL, bright_batch, config_path=drift_config)
+        assert 0.0 <= result["drift_share"] <= 1.0
+
+    def test_feature_stats_keys(self, bright_batch, drift_config):
+        result = run_drift_report(CASTING_VAL, bright_batch, config_path=drift_config)
+        for key in ("brightness_mean", "brightness_std", "contrast", "sharpness"):
+            assert key in result["feature_stats"]
+            stats = result["feature_stats"][key]
+            assert "drift_detected" in stats
+            assert "drift_score" in stats
+
+
+# ---------------------------------------------------------------------------
+# run_drift_report — edge-case: Evidently returns no DatasetDriftMetric
+# This branch cannot be exercised with real data; mock is intentional.
+# ---------------------------------------------------------------------------
+
+
+class TestRunDriftReportEdgeCases:
+    def test_empty_metrics_returns_no_drift(self, tmp_path):
+        """When Evidently returns no metrics at all, safe default is returned."""
+        cfg = tmp_path / "drift.yaml"
+        cfg.write_text("drift:\n  min_reference_samples: 5\n  min_current_samples: 3\n")
+        ref = _make_image_dir(tmp_path, "ref", n=6, color=(100, 100, 100))
+        cur = _make_image_dir(tmp_path, "cur", n=4, color=(200, 200, 200))
+
+        mock_instance = MagicMock()
+        mock_instance.as_dict.return_value = {"metrics": []}
+        with patch("evidently.report.Report", MagicMock(return_value=mock_instance)):
             with patch("evidently.metric_preset.DataDriftPreset"):
                 result = run_drift_report(ref, cur, config_path=cfg)
-        assert "brightness_mean" in result["feature_stats"]
-        assert result["feature_stats"]["brightness_mean"][
-            "drift_score"
-        ] == pytest.approx(0.01)
 
-    def test_missing_dataset_metric_returns_no_drift(self, dirs_with_enough_images):
-        ref, cur, cfg = dirs_with_enough_images
-        mock_cls = self._mock_report({"metrics": []})
-        with patch("evidently.report.Report", mock_cls):
-            with patch("evidently.metric_preset.DataDriftPreset"):
-                result = run_drift_report(ref, cur, config_path=cfg)
         assert result["drift_detected"] is False
         assert result["skipped"] is False

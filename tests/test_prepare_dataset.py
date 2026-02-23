@@ -1,4 +1,11 @@
-"""Tests for src/data/prepare_dataset.py"""
+"""Tests for src/data/prepare_dataset.py
+
+Unit tests use a minimal synthetic COCO dataset (1 image per split) to keep
+the suite fast and self-contained.
+
+Integration tests (TestPrepareCastingDataset) use the real Casting product
+from data/raw/vision/ and are skipped when the dataset is not present.
+"""
 
 import json
 from pathlib import Path
@@ -13,6 +20,10 @@ from src.data.prepare_dataset import (
     prepare_dataset,
     process_split,
 )
+
+# Real dataset paths
+CASTING_SRC = Path("data/raw/vision/Casting")
+HAS_CASTING = CASTING_SRC.exists()
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -210,3 +221,68 @@ class TestPrepareDataset:
     def test_raises_on_missing_source(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             prepare_dataset(tmp_path / "nonexistent", tmp_path / "dst")
+
+
+# ---------------------------------------------------------------------------
+# prepare_dataset — real Casting product (integration)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not HAS_CASTING, reason="Casting dataset not found")
+class TestPrepareCastingDataset:
+    """Run the full COCO→YOLO pipeline against the real Casting product and
+    verify it produces the correct classes, image counts, and file layout."""
+
+    @pytest.fixture(scope="class")
+    def prepared(self, tmp_path_factory) -> Path:
+        """Convert Casting once and share the output across all tests."""
+        dst = tmp_path_factory.mktemp("casting_out")
+        prepare_dataset(
+            src_dir=CASTING_SRC.parent,  # data/raw/vision/
+            dst_dir=dst,
+            products=["Casting"],
+        )
+        return dst
+
+    def test_dataset_yaml_exists(self, prepared):
+        assert (prepared / "dataset.yaml").exists()
+
+    def test_class_count_is_two(self, prepared):
+        cfg = yaml.safe_load((prepared / "dataset.yaml").read_text())
+        assert cfg["nc"] == 2
+
+    def test_class_names_match_casting_categories(self, prepared):
+        cfg = yaml.safe_load((prepared / "dataset.yaml").read_text())
+        assert set(cfg["names"]) == {"inclusoes", "rechupe"}
+
+    def test_class_map_written(self, prepared):
+        class_map = json.loads((prepared / "class_map.json").read_text())
+        assert set(class_map.keys()) == {"inclusoes", "rechupe"}
+
+    def test_training_images_count(self, prepared):
+        imgs = list((prepared / "images" / "train").glob("*.jpg"))
+        assert len(imgs) == 54
+
+    def test_val_images_count(self, prepared):
+        imgs = list((prepared / "images" / "val").glob("*.jpg"))
+        assert len(imgs) == 51
+
+    def test_label_files_created_for_train(self, prepared):
+        labels = list((prepared / "labels" / "train").glob("*.txt"))
+        assert len(labels) == 54
+
+    def test_label_files_created_for_val(self, prepared):
+        labels = list((prepared / "labels" / "val").glob("*.txt"))
+        assert len(labels) == 51
+
+    def test_label_format_valid(self, prepared):
+        """Spot-check: every label line has 5 floats with values in [0, 1]."""
+        label_files = sorted((prepared / "labels" / "train").glob("*.txt"))
+        for lf in label_files[:10]:  # check first 10
+            for line in lf.read_text().strip().splitlines():
+                parts = line.split()
+                assert len(parts) == 5, f"bad label line in {lf}: {line!r}"
+                cls_id = int(parts[0])
+                assert cls_id in (0, 1), f"unexpected class id {cls_id}"
+                for v in parts[1:]:
+                    assert 0.0 <= float(v) <= 1.0, f"out-of-range coord in {lf}: {v}"
