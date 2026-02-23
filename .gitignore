@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.so
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Dataset — never commit data
+data/raw/vision/*
+!data/raw/vision/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/drift_batches/*
+!data/drift_batches/.gitkeep
+
+# Model weights & artifacts
+*.pt
+*.pth
+*.onnx
+*.weights
+runs/
+mlruns/
+mlflow.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Docker
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
