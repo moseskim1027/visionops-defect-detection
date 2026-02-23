@@ -1,4 +1,4 @@
-name: Lint
+name: CI
 
 on:
   push:
@@ -31,3 +31,24 @@ jobs:
 
       - name: black check
         run: black --check src/ tests/ dags/
+
+  build-inference:
+    name: Build inference image
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build inference image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.inference
+          push: false
+          tags: visionops-inference:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
