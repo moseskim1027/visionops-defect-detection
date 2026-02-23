@@ -1,0 +1,33 @@
+name: Lint
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    name: ruff + black
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install lint tools
+        run: pip install ruff==0.9.1 black==24.10.0
+
+      - name: ruff check
+        run: ruff check src/ tests/ dags/ --output-format=github
+
+      - name: ruff format check
+        run: ruff format --check src/ tests/ dags/
+
+      - name: black check
+        run: black --check src/ tests/ dags/
