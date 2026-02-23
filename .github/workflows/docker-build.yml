@@ -2,7 +2,7 @@ name: Docker Build
 
 on:
   push:
-    branches: ["**"]
+    branches: [main, develop]
     paths:
       - "docker/**"
       - "src/**"
