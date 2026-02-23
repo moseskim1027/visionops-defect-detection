@@ -123,11 +123,17 @@ def run_drift_report(
     report.run(reference_data=ref_df, current_data=cur_df)
     result = report.as_dict()
 
+    # In Evidently 0.4.x, per-column breakdown is in DataDriftTable;
+    # DatasetDriftMetric only carries the aggregate flag.
+    table_metric = next(
+        (m for m in result["metrics"] if m["metric"] == "DataDriftTable"),
+        None,
+    )
     dataset_metric = next(
         (m for m in result["metrics"] if m["metric"] == "DatasetDriftMetric"),
         None,
     )
-    if dataset_metric is None:
+    if table_metric is None and dataset_metric is None:
         return {
             "drift_detected": False,
             "drifted_features": [],
@@ -136,7 +142,8 @@ def run_drift_report(
             "skipped": False,
         }
 
-    res = dataset_metric["result"]
+    # Prefer DataDriftTable (has drift_by_columns); fall back to DatasetDriftMetric
+    res = (table_metric or dataset_metric)["result"]  # type: ignore[index]
     drift_by_col: dict = res.get("drift_by_columns", {})
     drifted = [col for col, info in drift_by_col.items() if info.get("drift_detected")]
     drift_share = res.get(
