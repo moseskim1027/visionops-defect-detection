@@ -146,18 +146,159 @@ docker compose up -d
 
 ---
 
-## Planned PRs
+## End-to-End Docker Walkthrough
 
-| Branch                       | Description                          |
-|------------------------------|--------------------------------------|
-| `feat/repo-scaffold-ci-cd`   | Repo structure + CI workflows        |
-| `feat/data-pipeline`         | COCO→YOLO conversion + drift sim     |
-| `feat/training-mlflow`       | YOLOv8n training + MLflow logging    |
-| `feat/inference-api`         | FastAPI service + Prometheus metrics |
-| `feat/airflow-dags`          | Training + monitoring DAGs           |
-| `feat/k8s-deployment`        | Kubernetes manifests + Helm values   |
-| `feat/monitoring-stack`      | Evidently + Prometheus + Grafana     |
-| `docs/readme`                | Architecture diagram + full docs     |
+### Prerequisites
+
+Make sure Docker Desktop is running and the processed dataset exists:
+
+```bash
+python -m src.data.prepare_dataset \
+  --src data/raw/vision \
+  --dst data/processed
+
+ls data/processed/images/train | wc -l   # should be 54
+```
+
+### Step 1 — Start the stack
+
+```bash
+docker compose up --build -d
+```
+
+This starts four services:
+
+| Service | URL | Purpose |
+|---|---|---|
+| mlflow | http://localhost:5000 | Experiment tracking + model registry |
+| inference | http://localhost:8000 | FastAPI + Prometheus metrics |
+| prometheus | http://localhost:9090 | Scrapes inference every 15 s |
+| grafana | http://localhost:3000 | Dashboards (anonymous access) |
+
+Wait for the services to be healthy:
+
+```bash
+docker compose ps
+# inference and mlflow should show "(healthy)"
+```
+
+### Step 2 — Run a training job
+
+```bash
+export MLFLOW_TRACKING_URI=http://localhost:5000
+
+python -m src.training.train \
+  --data data/processed/dataset.yaml \
+  --config configs/model.yaml
+```
+
+The run appears at http://localhost:5000. The script logs `map50`, `precision`, and `recall` and registers the model as **visionops-yolov8n**. The promotion threshold is **mAP@0.5 ≥ 0.30** (configured in `configs/model.yaml`).
+
+If the run meets the threshold, promote it to production:
+
+```bash
+python - <<'EOF'
+import mlflow
+mlflow.set_tracking_uri("http://localhost:5000")
+client = mlflow.MlflowClient()
+# replace <VERSION> with the version number shown in the MLflow UI
+client.set_registered_model_alias("visionops-yolov8n", "production", "<VERSION>")
+EOF
+```
+
+> When running via Airflow, the `training_pipeline` DAG handles promotion automatically.
+
+### Step 3 — Reload the inference service
+
+The inference container loads the `production` alias on startup. Restart it after promoting:
+
+```bash
+docker compose restart inference
+
+curl http://localhost:8000/health
+# {"status":"ok","model_loaded":true,...}
+```
+
+### Step 4 — Send predictions
+
+```bash
+# Single image
+curl -X POST http://localhost:8000/predict \
+  -F "file=@data/raw/vision/Casting/val/casting_def_0_1.jpg" | python -m json.tool
+
+# Batch — loop over all val images
+for img in data/raw/vision/Casting/val/*.jpg; do
+  curl -s -X POST http://localhost:8000/predict \
+    -F "file=@$img" > /dev/null
+done
+```
+
+Each request increments `predictions_total` and records latency in `inference_latency_seconds`.
+
+### Step 5 — Simulate drift
+
+```bash
+# Generate a drifted batch (extreme brightness shift)
+python - <<'EOF'
+from pathlib import Path
+from PIL import Image
+from src.data.drift_simulator import apply_brightness
+
+src = Path("data/raw/vision/Casting/val")
+dst = Path("data/drift_batches/bright_batch")
+dst.mkdir(parents=True, exist_ok=True)
+
+for p in sorted(src.glob("*.jpg"))[:25]:
+    img = Image.open(p).convert("RGB")
+    apply_brightness(img, factor=2.5).save(dst / p.name)
+
+print(f"Created {len(list(dst.glob('*.jpg')))} drifted images")
+EOF
+
+# Run drift detection
+python - <<'EOF'
+from pathlib import Path
+from src.monitoring.drift_detection import run_drift_report
+
+result = run_drift_report(
+    reference_dir=Path("data/raw/vision/Casting/val"),
+    current_dir=Path("data/drift_batches/bright_batch"),
+    config_path=Path("configs/drift.yaml"),
+)
+
+print(f"Drift detected  : {result['drift_detected']}")
+print(f"Drift share     : {result['drift_share']:.0%}")
+print(f"Drifted features: {result['drifted_features']}")
+EOF
+```
+
+Expected output:
+
+```
+Drift detected  : True
+Drift share     : 75%
+Drifted features: ['brightness_mean', 'brightness_std', 'contrast']
+```
+
+### Step 6 — View everything in Grafana
+
+Open http://localhost:3000 (no login required). Navigate to **Dashboards → VisionOps Inference**:
+
+| Panel | What to look for |
+|---|---|
+| Request Rate | Spikes from the batch sent in Step 4 |
+| Error Rate | Should be 0 unless a request failed |
+| Inference Latency | p50 / p95 / p99 lines per request |
+| Service Up | Green `1` = inference is alive |
+
+Prometheus scrapes every 15 s. To verify scraping: http://localhost:9090/targets — the `inference` job should show **State: UP**.
+
+### Step 7 — Tear down
+
+```bash
+docker compose down        # stop and remove containers
+docker compose down -v     # also remove the mlflow-data volume
+```
 
 ---
 
