@@ -1,8 +1,8 @@
 # Inference-only dependencies (no training stack)
 # CPU-only torch — --extra-index-url must be a standalone line in requirements files
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1+cpu
-torchvision==0.20.1+cpu
+torch==2.6.0+cpu
+torchvision==0.21.0
 ultralytics==8.3.40
 
 fastapi==0.115.6

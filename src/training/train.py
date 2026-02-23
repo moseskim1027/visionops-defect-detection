@@ -15,6 +15,7 @@ that is delegated to the Airflow DAG to maintain clean task separation.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 import mlflow
@@ -77,9 +78,20 @@ def run_training(
             "Run src/data/prepare_dataset.py first."
         )
 
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI") or mlflow_cfg["tracking_uri"]
+    mlflow.autolog(disable=True)
+    # ray is installed as a transitive dep but its version is incompatible with the
+    # Ultralytics raytune callback. Patch the missing symbol so the callback is a no-op.
+    try:
+        import ray.train._internal.session as _ray_session
+
+        if not hasattr(_ray_session, "_get_session"):
+            _ray_session._get_session = lambda: None
+    except Exception:
+        pass
     experiment_id = get_or_create_experiment(
         mlflow_cfg["experiment_name"],
-        mlflow_cfg["tracking_uri"],
+        tracking_uri,
     )
 
     with mlflow.start_run(experiment_id=experiment_id) as run:

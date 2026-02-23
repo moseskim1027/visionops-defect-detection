@@ -9,7 +9,7 @@ validate_data → train_model → register_model → conditional_promote
 
 Tasks
 -----
-validate_data         Verify ``data/processed/dataset.yaml`` exists.
+validate_data         Verify the dataset.yaml exists.
 train_model           Run YOLOv8n training and log to MLflow.
 register_model        Push the run to the MLflow registry at @staging.
 conditional_promote   Branch: map50 >= threshold → promote; else skip.
@@ -19,6 +19,12 @@ skip_promotion        No-op terminal task.
 Scheduling
 ----------
 ``schedule=None`` — triggered manually or by ``monitoring_pipeline``.
+
+Trigger params
+--------------
+dataset_yaml   Path to the YOLO dataset.yaml (default: data/processed_subset/dataset.yaml).
+resume_from    Optional path to a .pt checkpoint to resume training from.
+               Example: runs/detect/train3/weights/last.pt
 """
 
 from __future__ import annotations
@@ -28,7 +34,8 @@ from pathlib import Path
 
 import yaml
 from airflow.decorators import dag, task
-from airflow.operators.empty import EmptyOperator
+from airflow.models.param import Param
+from airflow.providers.standard.operators.empty import EmptyOperator
 
 
 @dag(
@@ -37,12 +44,24 @@ from airflow.operators.empty import EmptyOperator
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["training", "mlflow"],
+    params={
+        "dataset_yaml": Param(
+            "data/processed_subset/dataset.yaml",
+            type="string",
+            description="Path to dataset.yaml (relative to /opt/airflow in Docker)",
+        ),
+        "resume_from": Param(
+            None,
+            type=["null", "string"],
+            description="Optional checkpoint path to resume training from, "
+            "e.g. runs/detect/train3/weights/last.pt",
+        ),
+    },
 )
 def training_pipeline() -> None:
     @task()
-    def validate_data(
-        dataset_yaml: str = "data/processed/dataset.yaml",
-    ) -> str:
+    def validate_data(**context) -> str:
+        dataset_yaml = context["params"]["dataset_yaml"]
         path = Path(dataset_yaml)
         if not path.exists():
             raise FileNotFoundError(
@@ -51,13 +70,30 @@ def training_pipeline() -> None:
         return dataset_yaml
 
     @task()
-    def train_model(dataset_yaml: str) -> dict:
+    def train_model(dataset_yaml: str, **context) -> dict:
+        import yaml as _yaml  # noqa: PLC0415
+
         from src.training.train import run_training  # noqa: PLC0415
 
-        run_id, metrics = run_training(
-            config_path=Path("configs/model.yaml"),
-            dataset_yaml=Path(dataset_yaml),
-        )
+        resume_from = context["params"].get("resume_from")
+        config_path = Path("configs/model.yaml")
+        cfg = _yaml.safe_load(config_path.read_text())
+
+        orig_variant = cfg["model"]["variant"]
+        if resume_from:
+            cfg["model"]["variant"] = resume_from
+            config_path.write_text(_yaml.dump(cfg))
+
+        try:
+            run_id, metrics = run_training(
+                config_path=config_path,
+                dataset_yaml=Path(dataset_yaml),
+            )
+        finally:
+            if resume_from:
+                cfg["model"]["variant"] = orig_variant
+                config_path.write_text(_yaml.dump(cfg))
+
         return {"run_id": run_id, "metrics": metrics}
 
     @task()

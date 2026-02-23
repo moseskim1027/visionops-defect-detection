@@ -171,7 +171,7 @@ def prepare_dataset(
     # dataset.yaml consumed by ultralytics YOLO trainer
     names_list = [name for name, _ in sorted(class_map.items(), key=lambda x: x[1])]
     config = {
-        "path": str(dst_dir.resolve()),
+        "path": str(dst_dir),
         "train": "images/train",
         "val": "images/val",
         "nc": len(class_map),

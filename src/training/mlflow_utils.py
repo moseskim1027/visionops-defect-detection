@@ -11,11 +11,18 @@ Design notes
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import mlflow
 import mlflow.pyfunc
 from mlflow.tracking import MlflowClient
+
+
+def _resolve_uri(tracking_uri: str) -> str:
+    """Prefer MLFLOW_TRACKING_URI env var over the config value (needed in Docker)."""
+    return os.environ.get("MLFLOW_TRACKING_URI") or tracking_uri
+
 
 if TYPE_CHECKING:
     from mlflow.entities.model_registry import ModelVersion
@@ -66,7 +73,7 @@ class YOLOPyfuncWrapper(mlflow.pyfunc.PythonModel):
 
 def get_or_create_experiment(name: str, tracking_uri: str) -> str:
     """Return the experiment ID, creating the experiment if it does not exist."""
-    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_tracking_uri(_resolve_uri(tracking_uri))
     experiment = mlflow.get_experiment_by_name(name)
     if experiment is not None:
         return experiment.experiment_id
@@ -91,7 +98,7 @@ def register_to_staging(run_id: str, model_name: str, tracking_uri: str) -> int:
     Returns:
         The new model version number (int).
     """
-    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_tracking_uri(_resolve_uri(tracking_uri))
     model_uri = f"runs:/{run_id}/model"
     mv: ModelVersion = mlflow.register_model(model_uri, model_name)
 
@@ -128,7 +135,7 @@ def promote_to_production(
         )
         return False
 
-    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_tracking_uri(_resolve_uri(tracking_uri))
     client = MlflowClient()
     client.set_registered_model_alias(model_name, PRODUCTION_ALIAS, version)
     logger.info(
