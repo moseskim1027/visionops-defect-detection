@@ -43,9 +43,7 @@ class YOLOPyfuncWrapper(mlflow.pyfunc.PythonModel):
 
         self.model = YOLO(context.artifacts["weights"])
 
-    def predict(
-        self, context: mlflow.pyfunc.PythonModelContext, model_input
-    ):  # noqa: ANN001
+    def predict(self, context: mlflow.pyfunc.PythonModelContext, model_input):  # noqa: ANN001
         """Run inference.
 
         Args:
