@@ -16,11 +16,18 @@ env/
 .env
 .env.*
 
+# Images
+*.jpg
+*.jpeg
+*.png
+
 # Dataset — never commit data
 data/raw/vision/*
 !data/raw/vision/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+data/processed_subset/*
+!data/processed_subset/.gitkeep
 data/drift_batches/*
 !data/drift_batches/.gitkeep
 
@@ -55,3 +62,6 @@ logs/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Generated reports
+drift_report.html
