@@ -23,6 +23,7 @@ def _resolve_uri(tracking_uri: str) -> str:
     """Prefer MLFLOW_TRACKING_URI env var over the config value (needed in Docker)."""
     return os.environ.get("MLFLOW_TRACKING_URI") or tracking_uri
 
+
 if TYPE_CHECKING:
     from mlflow.entities.model_registry import ModelVersion
 

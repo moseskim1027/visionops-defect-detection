@@ -54,7 +54,7 @@ from airflow.providers.standard.operators.empty import EmptyOperator
             None,
             type=["null", "string"],
             description="Optional checkpoint path to resume training from, "
-                        "e.g. runs/detect/train3/weights/last.pt",
+            "e.g. runs/detect/train3/weights/last.pt",
         ),
     },
 )

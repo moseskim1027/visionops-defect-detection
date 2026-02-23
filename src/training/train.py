@@ -84,6 +84,7 @@ def run_training(
     # Ultralytics raytune callback. Patch the missing symbol so the callback is a no-op.
     try:
         import ray.train._internal.session as _ray_session
+
         if not hasattr(_ray_session, "_get_session"):
             _ray_session._get_session = lambda: None
     except Exception:
