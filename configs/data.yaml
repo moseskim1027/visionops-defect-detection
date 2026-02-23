@@ -1,0 +1,17 @@
+# VISION dataset pipeline configuration
+dataset:
+  source_dir: data/raw/vision
+  processed_dir: data/processed
+  drift_batches_dir: data/drift_batches
+
+  # Product categories to include — null means all 14
+  # Available: Cable, Capacitor, Casting, Console, Cylinder, Electronics,
+  #            Groove, Hemisphere, Lens, PCB_1, PCB_2, Ring, Screw, Wood
+  categories: null
+
+drift_simulation:
+  default_type: brightness   # brightness | noise | blur | mixed
+  severity: 0.5              # intensity in [0, 1]
+  sample_fraction: 0.3       # fraction of val images per batch
+  split: val
+  seed: 42
