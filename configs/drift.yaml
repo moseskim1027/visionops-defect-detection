@@ -1,0 +1,10 @@
+# Drift detection thresholds
+drift:
+  confidence_score_threshold: 0.15   # Wasserstein distance
+  bbox_area_threshold: 0.20
+  class_distribution_threshold: 0.10
+  brightness_threshold: 0.20
+
+  # Minimum samples before drift evaluation
+  min_reference_samples: 50
+  min_current_samples: 20
