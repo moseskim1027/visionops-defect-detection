@@ -1,0 +1,24 @@
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Install system deps required by OpenCV / Pillow
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libgl1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies (inference-only subset)
+COPY docker/requirements.inference.txt .
+RUN pip install --upgrade pip && pip install -r requirements.inference.txt
+
+# Copy application source
+COPY src/ ./src/
+
+EXPOSE 8000
+
+CMD ["uvicorn", "src.inference.api:app", "--host", "0.0.0.0", "--port", "8000"]
