@@ -49,7 +49,7 @@ An end-to-end MLOps platform for industrial defect detection using the [VISION d
 |------------------|-------------------------|
 | Dataset          | VISION (HuggingFace)    |
 | Model            | YOLOv8n (Ultralytics)   |
-| Orchestration    | Apache Airflow 2.10     |
+| Orchestration    | Apache Airflow 3.1.7    |
 | Model Registry   | MLflow 2.19             |
 | Serving          | FastAPI + Uvicorn       |
 | Containerisation | Docker + Kubernetes     |
@@ -106,131 +106,153 @@ visionops-defect-detection/
 - `kind` (Kubernetes in Docker)
 - `kubectl`
 
-### 1. Clone and install dependencies
+### 1. Clone and create an environment
 
 ```bash
 git clone https://github.com/moseskim1027/visionops-defect-detection.git
 cd visionops-defect-detection
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
 ```
 
-### 2. Download VISION dataset
+**Option A — venv:**
+```bash
+make venv
+source .venv/bin/activate
+```
+
+**Option B — conda:**
+```bash
+make conda-env
+conda activate visionops
+```
+
+### 2. Install dependencies
+
+```bash
+make install
+```
+
+### 3. Download VISION dataset
 
 Download from [HuggingFace](https://huggingface.co/datasets/VISION-Workshop/VISION-Datasets) and extract to `data/raw/vision/`.
 
-### 3. Start MLflow
+### 4. Prepare the dataset
 
 ```bash
-mlflow server \
-  --backend-store-uri sqlite:///mlflow.db \
-  --default-artifact-root ./mlruns \
-  --port 5000
+make data
 ```
 
-### 4. Start Airflow
+### 5. Start the full stack
 
 ```bash
-# See docs/airflow-setup.md for full instructions
-export AIRFLOW_HOME=$(pwd)/airflow_home
-airflow db init
-airflow webserver --port 8080 &
-airflow scheduler &
-```
-
-### 5. Run the full stack with Docker Compose
-
-```bash
-docker compose up -d
+make up
 ```
 
 ---
 
-## End-to-End Docker Walkthrough
+## Makefile Reference
+
+Run `make help` to list all available targets.
+
+| Target | Description |
+|---|---|
+| `make venv` | Create `.venv` virtual environment |
+| `make conda-env` | Create conda env named `visionops` |
+| `make install` | Install dev dependencies (activate env first) |
+| `make data` | Prepare COCO→YOLO dataset |
+| `make up` | Build and start the Docker stack |
+| `make down` | Stop and remove containers |
+| `make down-v` | Stop containers and delete volumes |
+| `make ps` | Show service status |
+| `make logs` | Tail all service logs |
+| `make train` | Run a YOLOv8n training job on the full dataset (44 classes) |
+| `make train-subset` | Train on 11-class subset: Casting, Console, Groove, Ring |
+| `make promote MODEL_VERSION=<n>` | Promote a model version to production |
+| `make reload` | Restart the inference container |
+| `make predict` | Send a single image to `/predict` |
+| `make predict-batch` | Send all Casting val images to `/predict` |
+| `make drift-sim` | Generate a brightness-shifted batch |
+| `make drift-check` | Run Evidently drift check (terminal output) |
+| `make drift-report` | Generate full Evidently HTML report |
+| `make test` | Run the full pytest suite |
+| `make lint` | Run ruff + black checks |
+
+---
+
+## End-to-End Walkthrough
 
 ### Prerequisites
 
-Make sure Docker Desktop is running and the processed dataset exists:
+Make sure Docker Desktop is running, then:
 
 ```bash
-python -m src.data.prepare_dataset \
-  --src data/raw/vision \
-  --dst data/processed
-
-ls data/processed/images/train | wc -l   # should be 54
+make install   # install Python deps
+make data      # convert COCO → YOLO (1894 images across 14 products)
 ```
 
 ### Step 1 — Start the stack
 
 ```bash
-docker compose up --build -d
+make up
+make ps   # wait until mlflow and inference show "(healthy)"
 ```
 
 This starts four services:
 
 | Service | URL | Purpose |
 |---|---|---|
-| mlflow | http://localhost:5000 | Experiment tracking + model registry |
+| mlflow | http://localhost:5001 | Experiment tracking + model registry |
 | inference | http://localhost:8000 | FastAPI + Prometheus metrics |
 | prometheus | http://localhost:9090 | Scrapes inference every 15 s |
 | grafana | http://localhost:3000 | Dashboards (anonymous access) |
 
-Wait for the services to be healthy:
-
-```bash
-docker compose ps
-# inference and mlflow should show "(healthy)"
-```
-
 ### Step 2 — Run a training job
 
-```bash
-export MLFLOW_TRACKING_URI=http://localhost:5000
+**Option A — full dataset (44 classes, ~30 min on CPU):**
 
-python -m src.training.train \
-  --data data/processed/dataset.yaml \
-  --config configs/model.yaml
+```bash
+make train
 ```
 
-The run appears at http://localhost:5000. The script logs `map50`, `precision`, and `recall` and registers the model as **visionops-yolov8n**. The promotion threshold is **mAP@0.5 ≥ 0.30** (configured in `configs/model.yaml`).
-
-If the run meets the threshold, promote it to production:
+**Option B — 11-class subset (Casting, Console, Groove, Ring, ~5 min on CPU):**
 
 ```bash
-python - <<'EOF'
-import mlflow
-mlflow.set_tracking_uri("http://localhost:5000")
-client = mlflow.MlflowClient()
-# replace <VERSION> with the version number shown in the MLflow UI
-client.set_registered_model_alias("visionops-yolov8n", "production", "<VERSION>")
-EOF
+make train-subset                              # 5 epochs, threshold 0.10
+make train-subset EPOCHS=3 THRESHOLD=0.05     # custom overrides
+```
+
+The run appears at http://localhost:5001. The script logs `map50`, `precision`, and `recall`, registers the model as **visionops-yolov8n**, and prints a promotion recommendation. Promotion is always a separate step.
+
+> **If you used `train-subset`**, the downstream `predict`, `predict-batch`, `drift-sim`, and `drift-check` targets default to the full dataset paths. Override them at runtime to match the subset products:
+> ```bash
+> make predict       PREDICT_IMAGE=data/raw/vision/Casting/val/<img>.jpg
+> make predict-batch DRIFT_SRC=data/raw/vision/Console/val
+> make drift-sim     DRIFT_SRC=data/raw/vision/Groove/val  DRIFT_DST=data/drift_batches/groove_batch
+> make drift-check   DRIFT_SRC=data/raw/vision/Groove/val  DRIFT_DST=data/drift_batches/groove_batch
+> ```
+
+### Step 2a — Promote to production
+
+Check the MLflow UI at http://localhost:5001 and promote when ready:
+
+```bash
+make promote MODEL_VERSION=1
 ```
 
 > When running via Airflow, the `training_pipeline` DAG handles promotion automatically.
 
 ### Step 3 — Reload the inference service
 
-The inference container loads the `production` alias on startup. Restart it after promoting:
-
 ```bash
-docker compose restart inference
-
+make reload
 curl http://localhost:8000/health
-# {"status":"ok","model_loaded":true,...}
+# {"status":"ok","model_loaded":true}
 ```
 
 ### Step 4 — Send predictions
 
 ```bash
-# Single image
-curl -X POST http://localhost:8000/predict \
-  -F "file=@data/raw/vision/Casting/val/casting_def_0_1.jpg" | python -m json.tool
-
-# Batch — loop over all val images
-for img in data/raw/vision/Casting/val/*.jpg; do
-  curl -s -X POST http://localhost:8000/predict \
-    -F "file=@$img" > /dev/null
-done
+make predict                          # single image
+make predict-batch                    # all 51 Casting val images
 ```
 
 Each request increments `predictions_total` and records latency in `inference_latency_seconds`.
@@ -238,38 +260,8 @@ Each request increments `predictions_total` and records latency in `inference_la
 ### Step 5 — Simulate drift
 
 ```bash
-# Generate a drifted batch (extreme brightness shift)
-python - <<'EOF'
-from pathlib import Path
-from PIL import Image
-from src.data.drift_simulator import apply_brightness
-
-src = Path("data/raw/vision/Casting/val")
-dst = Path("data/drift_batches/bright_batch")
-dst.mkdir(parents=True, exist_ok=True)
-
-for p in sorted(src.glob("*.jpg"))[:25]:
-    img = Image.open(p).convert("RGB")
-    apply_brightness(img, factor=2.5).save(dst / p.name)
-
-print(f"Created {len(list(dst.glob('*.jpg')))} drifted images")
-EOF
-
-# Run drift detection
-python - <<'EOF'
-from pathlib import Path
-from src.monitoring.drift_detection import run_drift_report
-
-result = run_drift_report(
-    reference_dir=Path("data/raw/vision/Casting/val"),
-    current_dir=Path("data/drift_batches/bright_batch"),
-    config_path=Path("configs/drift.yaml"),
-)
-
-print(f"Drift detected  : {result['drift_detected']}")
-print(f"Drift share     : {result['drift_share']:.0%}")
-print(f"Drifted features: {result['drifted_features']}")
-EOF
+make drift-sim     # generate 25 brightness-shifted images
+make drift-check   # run Evidently drift report
 ```
 
 Expected output:
@@ -296,9 +288,81 @@ Prometheus scrapes every 15 s. To verify scraping: http://localhost:9090/targets
 ### Step 7 — Tear down
 
 ```bash
-docker compose down        # stop and remove containers
-docker compose down -v     # also remove the mlflow-data volume
+make down     # stop and remove containers
+make down-v   # also remove the mlflow-data volume
 ```
+
+---
+
+## Airflow Automation
+
+The Airflow stack runs on top of the base stack and automates training and drift monitoring. It requires no additional tools beyond Docker.
+
+### Start the Airflow stack
+
+```bash
+make airflow-up     # starts base stack + Airflow services
+```
+
+Wait for all services to become healthy (~60 s), then open the Airflow UI:
+
+| Service | URL | Credentials |
+|---|---|---|
+| Airflow UI | http://localhost:8080 | admin / admin |
+
+To stop:
+
+```bash
+make airflow-down    # stop containers, keep volumes
+make airflow-down-v  # stop containers and delete volumes
+```
+
+### DAGs
+
+#### `training_pipeline`
+
+Validates the dataset, trains YOLOv8n, registers the model in MLflow, and conditionally promotes it to the `production` alias if it meets the `map50_threshold` defined in `configs/model.yaml`.
+
+```
+validate_data → train_model → register_model → conditional_promote
+                                                      │
+                                        ┌─────────────┴──────────────┐
+                                  promote_model               skip_promotion
+```
+
+Trigger manually from the Airflow UI, or override epochs at runtime:
+
+```bash
+# trigger via UI → training_pipeline → Trigger DAG ▶
+```
+
+After a successful run, check the model version at http://localhost:5001.
+
+#### `monitoring_pipeline`
+
+Runs on a daily schedule. Simulates a drift batch from the validation set, runs an Evidently feature-drift check, and triggers `training_pipeline` if drift is detected.
+
+```
+simulate_drift → run_drift_detection → branch_on_drift
+                                              │
+                               ┌──────────────┴──────────────┐
+                       trigger_retraining              end_no_drift
+```
+
+To run a drift check locally without Airflow:
+
+```bash
+make drift-sim     # generate 25 brightness-shifted images in data/drift_batches/bright_batch/
+make drift-check   # print drift_detected, drift_share, drifted_features
+make drift-report  # save drift_report.html (open in browser)
+```
+
+### Architecture notes
+
+- **LocalExecutor** — tasks run in the same container as the scheduler; no Celery or Redis needed
+- **PostgreSQL** — Airflow metadata DB (`airflow-db` service); data persists in the `airflow-db-data` volume
+- **Shared volumes** — `./src`, `./configs`, `./data`, `./runs`, and `./dags` are bind-mounted so DAG and source changes are live without a rebuild
+- **MLflow integration** — containers use `MLFLOW_TRACKING_URI=http://mlflow:5000` (internal Docker DNS); the host uses `http://localhost:5001`
 
 ---
 
