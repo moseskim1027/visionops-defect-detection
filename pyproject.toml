@@ -25,12 +25,10 @@ known-first-party = ["src"]
 quote-style = "double"
 indent-style = "space"
 
-[tool.black]
-line-length = 88
-target-version = ["py311"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "--cov=src --cov-report=term-missing"
 
 [tool.coverage.run]

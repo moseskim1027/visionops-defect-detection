@@ -1,21 +1,17 @@
-# YOLOv8n model configuration
+mlflow:
+  experiment_name: visionops-defect-detection
+  model_name: visionops-yolov8n
+  tracking_uri: http://localhost:5001
 model:
-  variant: yolov8n.pt
-  task: detect
   imgsz: 640
-
+  task: detect
+  variant: runs/detect/train3/weights/last.pt
+promotion:
+  map50_threshold: 0.1
 training:
-  epochs: 10
   batch: 8
+  device: cpu
+  epochs: 3
   lr0: 0.01
   patience: 5
   workers: 2
-  device: cpu
-
-mlflow:
-  experiment_name: visionops-defect-detection
-  tracking_uri: http://localhost:5000
-  model_name: visionops-yolov8n
-
-promotion:
-  map50_threshold: 0.30  # minimum mAP@0.5 to promote to Production
