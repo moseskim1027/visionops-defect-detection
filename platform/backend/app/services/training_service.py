@@ -24,6 +24,8 @@ from app.config import (
     MLFLOW_EXPERIMENT_NAME,
     MLFLOW_TRACKING_URI,
     PROCESSED_DIR,
+    PROCESSED_SUBSET_DIR,
+    RAW_DIR,
     ROOT_DIR,
     RUNS_DIR,
 )
@@ -40,6 +42,7 @@ _train_state: dict[str, Any] = {
     "error": None,
     "pid": None,
     "configured_epochs": None,
+    "products": None,  # list[str] | None — None means full dataset
 }
 
 # ---------------------------------------------------------------------------
@@ -179,6 +182,20 @@ def get_class_distribution(processed_dir: str | None = None) -> list[dict[str, A
 
 
 # ---------------------------------------------------------------------------
+# Available products
+# ---------------------------------------------------------------------------
+
+
+def get_available_products() -> list[str]:
+    """Return sorted product category names from the raw dataset directory."""
+    if not RAW_DIR.exists():
+        return []
+    return sorted(
+        p.name for p in RAW_DIR.iterdir() if p.is_dir() and not p.name.startswith(".")
+    )
+
+
+# ---------------------------------------------------------------------------
 # Training lifecycle
 # ---------------------------------------------------------------------------
 
@@ -186,6 +203,7 @@ def get_class_distribution(processed_dir: str | None = None) -> list[dict[str, A
 def start_training(
     dataset_yaml: str | None = None,
     config_overrides: dict[str, Any] | None = None,
+    products: list[str] | None = None,
 ) -> dict[str, Any]:
     if _train_state["status"] == "running":
         return {"error": "Training already running", "state": _train_state.copy()}
@@ -195,7 +213,13 @@ def start_training(
 
     # Snapshot configured epochs AFTER applying any overrides
     configured_epochs = get_training_config().get("epochs", 10)
-    dataset = dataset_yaml or str(PROCESSED_DIR / "dataset.yaml")
+
+    # Resolve dataset path: subset when products specified, full otherwise
+    subset_products = products if products else None
+    if subset_products:
+        dataset = dataset_yaml or str(PROCESSED_SUBSET_DIR / "dataset.yaml")
+    else:
+        dataset = dataset_yaml or str(PROCESSED_DIR / "dataset.yaml")
 
     _train_state.update(
         {
@@ -206,6 +230,7 @@ def start_training(
             "error": None,
             "pid": None,
             "configured_epochs": configured_epochs,
+            "products": subset_products,
         }
     )
 
@@ -214,6 +239,37 @@ def start_training(
             env = os.environ.copy()
             env["PYTHONPATH"] = str(ROOT_DIR)
             env["MLFLOW_TRACKING_URI"] = MLFLOW_TRACKING_URI
+
+            # Prepare subset dataset first if products were specified
+            if subset_products:
+                prep_cmd = [
+                    sys.executable,
+                    "-m",
+                    "src.data.prepare_dataset",
+                    "--src",
+                    str(RAW_DIR),
+                    "--dst",
+                    str(PROCESSED_SUBSET_DIR),
+                    "--products",
+                    *subset_products,
+                ]
+                prep = subprocess.run(
+                    prep_cmd,
+                    cwd=str(ROOT_DIR),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+                if prep.returncode != 0:
+                    _train_state.update(
+                        {
+                            "status": "failed",
+                            "error": prep.stderr[-2000:] or prep.stdout[-2000:],
+                            "completed_at": time.time(),
+                        }
+                    )
+                    return
+
             cmd = [
                 sys.executable,
                 "-m",

@@ -5,6 +5,7 @@ ROOT_DIR = Path(os.getenv("ROOT_DIR", "/workspace"))
 DATA_DIR = ROOT_DIR / "data"
 RAW_DIR = DATA_DIR / "raw" / "vision"
 PROCESSED_DIR = DATA_DIR / "processed"
+PROCESSED_SUBSET_DIR = DATA_DIR / "processed_subset"
 RUNS_DIR = ROOT_DIR / "runs"
 CONFIGS_DIR = ROOT_DIR / "configs"
 

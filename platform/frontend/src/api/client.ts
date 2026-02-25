@@ -52,7 +52,7 @@ export const api = {
 
   updateTrainingConfig: (config: Partial<any>) => put<any>('/training/config', config),
 
-  startTraining: (body?: { dataset_yaml?: string; config?: Partial<any> }) =>
+  startTraining: (body?: { dataset_yaml?: string; config?: Partial<any>; products?: string[] }) =>
     post<any>('/training/start', body ?? {}),
 
   getTrainingStatus: () => get<any>('/training/status'),
@@ -62,6 +62,8 @@ export const api = {
   getEpochResults: () => get<any>('/training/epoch-results'),
 
   getMLflowMetrics: (runId: string) => get<any>(`/training/metrics/${runId}`),
+
+  getAvailableProducts: () => get<any>('/training/products'),
 
   listRuns: () => get<any>('/training/runs'),
 

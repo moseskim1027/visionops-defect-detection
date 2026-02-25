@@ -49,6 +49,7 @@ export interface TrainingConfig {
   device: string
   imgsz: number
   experiment_name: string
+  products?: string[]  // subset products; undefined/empty = full dataset
 }
 
 export interface ClassCount {

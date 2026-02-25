@@ -28,12 +28,18 @@ def update_config(body: dict[str, Any]) -> dict[str, Any]:
     return training_service.update_training_config(body)
 
 
+@router.get("/products")
+def available_products() -> dict[str, Any]:
+    return {"products": training_service.get_available_products()}
+
+
 @router.post("/start")
 def start_training(body: dict[str, Any] | None = None) -> dict[str, Any]:
     body = body or {}
     return training_service.start_training(
         dataset_yaml=body.get("dataset_yaml"),
         config_overrides=body.get("config"),
+        products=body.get("products") or None,
     )
 
 

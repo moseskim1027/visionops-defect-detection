@@ -90,7 +90,11 @@ export default function TrainingStep({ onComplete }: Props) {
     try {
       setEpochResults([])
       setMlflowMetrics(null)
-      await api.startTraining({ config: cfg })
+      const { products, ...configFields } = cfg
+      await api.startTraining({
+        config: configFields,
+        products: products && products.length > 0 ? products : undefined,
+      })
       const status: TrainingStatus = await api.getTrainingStatus()
       setTrainingStatus(status)
       startPolling()
