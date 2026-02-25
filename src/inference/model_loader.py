@@ -32,6 +32,9 @@ class ModelLoader:
     def __init__(self) -> None:
         self._model = None
         self._class_names: dict[int, str] = {}
+        self.run_id: str = ""
+        self.model_version: str = ""
+        self.model_alias: str = ""
 
     @property
     def is_loaded(self) -> bool:
@@ -71,7 +74,7 @@ class ModelLoader:
         """Download YOLO weights from MLflow registry and load.
 
         The model must have been logged with :class:`YOLOPyfuncWrapper` which
-        stores weights under the ``weights`` artifact key.
+        stores weights under the ``model/artifacts/`` artifact directory.
         """
         import mlflow  # noqa: PLC0415
         from mlflow.tracking import MlflowClient  # noqa: PLC0415
@@ -79,17 +82,20 @@ class ModelLoader:
         mlflow.set_tracking_uri(tracking_uri)
         client = MlflowClient()
 
-        version = client.get_model_version_by_alias(model_name, alias)
-        run_id = version.run_id
+        mv = client.get_model_version_by_alias(model_name, alias)
+        run_id = mv.run_id
 
         local_path = mlflow.artifacts.download_artifacts(
-            f"runs:/{run_id}/model/artifacts/weights"
+            f"runs:/{run_id}/model/artifacts"
         )
         candidates = list(Path(local_path).glob("*.pt"))
         if not candidates:
             raise FileNotFoundError(f"No .pt weights found in {local_path}")
 
         self.load(candidates[0], class_map_path)
+        self.run_id = run_id
+        self.model_version = mv.version
+        self.model_alias = alias
 
     # ------------------------------------------------------------------
     # Inference

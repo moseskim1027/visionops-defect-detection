@@ -1,0 +1,52 @@
+# Platform services — start the base stack first, then run this file:
+#
+#   Step 1 (from repo root):  docker compose up -d
+#   Step 2 (from repo root):  docker compose -f platform/docker-compose.yml up --build -d
+#
+# All relative paths below are resolved from platform/ (this file's location).
+
+services:
+
+  platform-backend:
+    build:
+      context: ./backend          # platform/backend/
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - ROOT_DIR=/workspace
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      - MLFLOW_EXPERIMENT_NAME=${MLFLOW_EXPERIMENT_NAME:-visionops-defect-detection}
+      - MLFLOW_MODEL_NAME=${MLFLOW_MODEL_NAME:-visionops-yolov8n}
+      - INFERENCE_URL=${INFERENCE_URL:-http://inference:8000}
+      - GRAFANA_URL=${GRAFANA_URL:-http://localhost:3000}
+      - PROMETHEUS_URL=${PROMETHEUS_URL:-http://localhost:9090}
+    volumes:
+      - ..:/workspace:ro              # repo root (read-only base)
+      - ../runs:/workspace/runs       # rw override so training can write weights
+      - ../data:/workspace/data       # rw override so prep can write processed data
+      - ../configs:/workspace/configs # rw override so training config can be updated
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - default
+
+  platform-frontend:
+    build:
+      context: ./frontend          # platform/frontend/
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    depends_on:
+      platform-backend:
+        condition: service_healthy
+    networks:
+      - default
+
+networks:
+  default:
+    name: visionops-defect-detection_default
+    external: true

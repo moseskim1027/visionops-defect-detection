@@ -16,6 +16,7 @@ YOLO_WEIGHTS_PATH     Local fallback weights path.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import tempfile
@@ -30,6 +31,7 @@ from prometheus_client import (
     REGISTRY,
     Counter,
     Histogram,
+    Info,
     generate_latest,
 )
 from pydantic import BaseModel
@@ -68,12 +70,23 @@ PREDICTIONS_TOTAL = _get_or_create(
 ERRORS_TOTAL = _get_or_create(
     Counter, "prediction_errors_total", "Total prediction errors"
 )
+MODEL_INFO = _get_or_create(Info, "active_model", "Currently loaded model metadata")
 
 # ---------------------------------------------------------------------------
 # Global model loader (replaced in tests via patching)
 # ---------------------------------------------------------------------------
 
 _loader = ModelLoader()
+
+
+def _update_model_info() -> None:
+    MODEL_INFO.info(
+        {
+            "run_id": _loader.run_id,
+            "version": _loader.model_version,
+            "alias": _loader.model_alias,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +110,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
                 tracking_uri,
                 class_map if class_map.exists() else None,
             )
+            _update_model_info()
         except Exception as exc:
             logger.warning(
                 "MLflow load failed (%s) — falling back to local weights", exc
@@ -198,3 +212,47 @@ async def predict(file: UploadFile = File(...)) -> PredictResponse:
 @app.get("/metrics", response_class=PlainTextResponse)
 async def metrics() -> PlainTextResponse:
     return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.post("/reload")
+async def reload_model() -> dict:
+    """Reload the YOLO model from MLflow (or local weights fallback)."""
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+    model_name = os.environ.get("MLFLOW_MODEL_NAME")
+    model_alias = os.environ.get("MLFLOW_MODEL_ALIAS", "production")
+    weights_path = os.environ.get("YOLO_WEIGHTS_PATH")
+    class_map = Path("data/processed/class_map.json")
+
+    def _do_reload() -> dict:
+        if tracking_uri and model_name:
+            try:
+                _loader.load_from_mlflow(
+                    model_name,
+                    model_alias,
+                    tracking_uri,
+                    class_map if class_map.exists() else None,
+                )
+                _update_model_info()
+                return {"status": "reloaded", "source": "mlflow", "alias": model_alias}
+            except Exception as exc:
+                logger.warning("MLflow reload failed (%s) — trying local weights", exc)
+                if weights_path:
+                    _loader.load(
+                        Path(weights_path),
+                        class_map if class_map.exists() else None,
+                    )
+                    return {
+                        "status": "reloaded",
+                        "source": "local",
+                        "warning": str(exc),
+                    }
+                return {"status": "error", "detail": str(exc)}
+        elif weights_path:
+            _loader.load(
+                Path(weights_path),
+                class_map if class_map.exists() else None,
+            )
+            return {"status": "reloaded", "source": "local"}
+        return {"status": "error", "detail": "No model source configured"}
+
+    return await asyncio.to_thread(_do_reload)

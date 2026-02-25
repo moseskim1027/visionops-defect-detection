@@ -11,7 +11,7 @@ promotion:
 training:
   batch: 8
   device: cpu
-  epochs: 3
+  epochs: 1
   lr0: 0.01
   patience: 5
   workers: 2
