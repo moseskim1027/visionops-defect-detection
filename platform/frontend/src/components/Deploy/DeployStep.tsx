@@ -206,6 +206,18 @@ function ModelRegistryPanel() {
         )}
       </div>
 
+      {/* Explanation */}
+      <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-800/40 rounded-lg px-3 py-2.5">
+        <svg className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>
+          <span className="text-slate-400 font-medium">Deploy Model</span> loads the version marked{' '}
+          <span className="font-mono text-green-400">production</span> into the live inference service.
+          Set a version as production above, then click Deploy Model on the right.
+        </span>
+      </div>
+
       {/* Divider */}
       <div className="border-t border-slate-800" />
 
@@ -465,15 +477,15 @@ function InferencePanel() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Reloading…
+            Deploying…
           </>
         ) : (
           <>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
-            Reload Model
+            Deploy Model
           </>
         )}
       </button>
