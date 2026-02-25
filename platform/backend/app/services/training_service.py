@@ -417,6 +417,13 @@ def get_epoch_results() -> list[dict[str, Any]]:
     if not csvs:
         return []
 
+    # Guard against serving stale data from a previous training run.
+    # If the most-recent CSV was last modified before this run started,
+    # the current run hasn't written its first epoch yet — return empty.
+    started_at = _train_state.get("started_at")
+    if started_at and csvs[0].stat().st_mtime < started_at:
+        return []
+
     results = []
     try:
         with open(csvs[0], newline="") as f:
