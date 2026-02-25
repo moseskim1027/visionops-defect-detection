@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../api/client'
 import type {
-  ClassCount, MLflowMetrics, ModelInfo, TrainingConfig, TrainingStatus,
+  ClassCount, EpochResult, MLflowMetrics, ModelInfo, TrainingConfig, TrainingStatus,
 } from '../../types'
 import ModelOverview from './ModelOverview'
 import DataCard from './DataCard'
@@ -22,6 +22,7 @@ export default function TrainingStep({ onComplete }: Props) {
   const [distribution, setDistribution] = useState<ClassCount[]>([])
   const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null)
   const [mlflowMetrics, setMlflowMetrics] = useState<MLflowMetrics | null>(null)
+  const [epochResults, setEpochResults] = useState<EpochResult[]>([])
   const [infoLoading, setInfoLoading] = useState(true)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -50,9 +51,7 @@ export default function TrainingStep({ onComplete }: Props) {
     try {
       const status: TrainingStatus = await api.getTrainingStatus()
       setTrainingStatus(status)
-      if (status.status === 'running') {
-        startPolling()
-      }
+      if (status.status === 'running') startPolling()
     } catch {/* ignore */}
   }
 
@@ -60,20 +59,24 @@ export default function TrainingStep({ onComplete }: Props) {
     if (pollRef.current) return
     pollRef.current = setInterval(async () => {
       try {
-        const status: TrainingStatus = await api.getTrainingStatus()
+        const [status, epochRes] = await Promise.all([
+          api.getTrainingStatus() as Promise<TrainingStatus>,
+          api.getEpochResults(),
+        ])
         setTrainingStatus(status)
+        setEpochResults(epochRes.results ?? [])
 
         if (status.run_id) {
           const m: MLflowMetrics = await api.getMLflowMetrics(status.run_id)
           if (!m.error) setMlflowMetrics(m)
         }
 
-        if (status.status === 'completed') {
+        if (status.status !== 'running') {
           clearInterval(pollRef.current!)
           pollRef.current = null
-        } else if (status.status === 'failed') {
-          clearInterval(pollRef.current!)
-          pollRef.current = null
+          // Final fetch of epoch results
+          const final = await api.getEpochResults()
+          setEpochResults(final.results ?? [])
         }
       } catch {/* ignore */}
     }, POLL_INTERVAL)
@@ -85,6 +88,8 @@ export default function TrainingStep({ onComplete }: Props) {
 
   const handleStart = async (cfg: TrainingConfig) => {
     try {
+      setEpochResults([])
+      setMlflowMetrics(null)
       await api.startTraining({ config: cfg })
       const status: TrainingStatus = await api.getTrainingStatus()
       setTrainingStatus(status)
@@ -94,12 +99,26 @@ export default function TrainingStep({ onComplete }: Props) {
     }
   }
 
+  const handleStop = async () => {
+    try {
+      await api.stopTraining()
+      const status: TrainingStatus = await api.getTrainingStatus()
+      setTrainingStatus(status)
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    } catch (e: any) {
+      console.error('Failed to stop training', e)
+    }
+  }
+
   const isTraining = trainingStatus?.status === 'running'
   const isComplete = trainingStatus?.status === 'completed'
+  const showProgress = isTraining || isComplete || trainingStatus?.status === 'failed'
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-      {/* Title */}
       <div>
         <h2 className="text-2xl font-bold text-white">Training</h2>
         <p className="text-slate-400 mt-1 text-sm">
@@ -107,33 +126,31 @@ export default function TrainingStep({ onComplete }: Props) {
         </p>
       </div>
 
-      {/* Row 1 — model overview + data card */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ModelOverview info={modelInfo} loading={infoLoading} />
         <DataCard distribution={distribution} loading={infoLoading} />
       </div>
 
-      {/* Row 2 — training config */}
       <TrainingConfigPanel
         config={config}
         disabled={isTraining}
         onStart={handleStart}
       />
 
-      {/* Row 3 — progress (visible after training starts) */}
-      {(isTraining || isComplete || trainingStatus?.status === 'failed') && (
+      {showProgress && (
         <div>
           <h3 className="text-lg font-semibold text-white mb-4">Training Progress</h3>
           <TrainingProgress
             status={trainingStatus}
+            epochResults={epochResults}
             metrics={mlflowMetrics}
             grafanaUrl={GRAFANA_URL}
             mlflowUrl={MLFLOW_URL}
+            onStop={handleStop}
           />
         </div>
       )}
 
-      {/* Continue button */}
       {isComplete && (
         <div className="flex justify-end">
           <button

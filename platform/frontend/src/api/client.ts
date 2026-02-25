@@ -57,6 +57,10 @@ export const api = {
 
   getTrainingStatus: () => get<any>('/training/status'),
 
+  stopTraining: () => post<any>('/training/stop'),
+
+  getEpochResults: () => get<any>('/training/epoch-results'),
+
   getMLflowMetrics: (runId: string) => get<any>(`/training/metrics/${runId}`),
 
   listRuns: () => get<any>('/training/runs'),

@@ -65,6 +65,19 @@ export interface TrainingStatus {
   error: string | null
   pid: number | null
   elapsed_seconds?: number
+  configured_epochs?: number
+}
+
+export interface EpochResult {
+  epoch: number
+  train_box_loss: number
+  train_cls_loss: number
+  val_box_loss: number
+  val_cls_loss: number
+  precision: number
+  recall: number
+  map50: number
+  map50_95: number
 }
 
 export interface MetricPoint {

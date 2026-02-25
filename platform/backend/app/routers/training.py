@@ -42,6 +42,17 @@ def training_status() -> dict[str, Any]:
     return training_service.get_training_status()
 
 
+@router.post("/stop")
+def stop_training() -> dict[str, Any]:
+    return training_service.stop_training()
+
+
+@router.get("/epoch-results")
+def epoch_results() -> dict[str, Any]:
+    rows = training_service.get_epoch_results()
+    return {"results": rows}
+
+
 @router.get("/metrics/{run_id}")
 def mlflow_metrics(run_id: str) -> dict[str, Any]:
     return training_service.get_mlflow_metrics(run_id)

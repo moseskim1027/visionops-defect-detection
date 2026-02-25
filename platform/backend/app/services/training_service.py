@@ -6,7 +6,9 @@ and model information retrieval.
 
 from __future__ import annotations
 
+import csv
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -23,6 +25,7 @@ from app.config import (
     MLFLOW_TRACKING_URI,
     PROCESSED_DIR,
     ROOT_DIR,
+    RUNS_DIR,
 )
 
 # ---------------------------------------------------------------------------
@@ -30,12 +33,13 @@ from app.config import (
 # ---------------------------------------------------------------------------
 
 _train_state: dict[str, Any] = {
-    "status": "idle",  # idle | running | completed | failed
+    "status": "idle",  # idle | running | completed | failed | stopped
     "run_id": None,
     "started_at": None,
     "completed_at": None,
     "error": None,
     "pid": None,
+    "configured_epochs": None,
 }
 
 # ---------------------------------------------------------------------------
@@ -189,6 +193,8 @@ def start_training(
     if config_overrides:
         update_training_config(config_overrides)
 
+    # Snapshot configured epochs AFTER applying any overrides
+    configured_epochs = get_training_config().get("epochs", 10)
     dataset = dataset_yaml or str(PROCESSED_DIR / "dataset.yaml")
 
     _train_state.update(
@@ -199,6 +205,7 @@ def start_training(
             "completed_at": None,
             "error": None,
             "pid": None,
+            "configured_epochs": configured_epochs,
         }
     )
 
@@ -299,13 +306,90 @@ def _find_latest_run(status: str = "RUNNING") -> str | None:
         return None
 
 
+def stop_training() -> dict[str, Any]:
+    """Send SIGTERM to the training subprocess."""
+    if _train_state["status"] != "running":
+        return {"error": "No training is currently running."}
+    pid = _train_state.get("pid")
+    if not pid:
+        return {"error": "PID not available yet; retry in a moment."}
+    try:
+        os.kill(pid, signal.SIGTERM)
+        _train_state.update(
+            {
+                "status": "failed",
+                "error": "Training stopped by user.",
+                "completed_at": time.time(),
+            }
+        )
+        return {"stopped": True}
+    except ProcessLookupError:
+        _train_state["status"] = "failed"
+        return {"error": "Process already exited."}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 def get_training_status() -> dict[str, Any]:
     state = _train_state.copy()
-    # Enrich with duration
     if state["started_at"]:
         end = state["completed_at"] or time.time()
         state["elapsed_seconds"] = int(end - state["started_at"])
     return state
+
+
+# ---------------------------------------------------------------------------
+# Per-epoch results (from Ultralytics results.csv)
+# ---------------------------------------------------------------------------
+
+
+def get_epoch_results() -> list[dict[str, Any]]:
+    """Read per-epoch metrics from the most recently modified results.csv.
+
+    Ultralytics writes one row per completed epoch progressively, so this
+    reflects live progress during training without needing MLflow.
+    """
+    detect_dir = RUNS_DIR / "detect"
+    if not detect_dir.exists():
+        return []
+
+    csvs = sorted(
+        detect_dir.glob("train*/results.csv"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not csvs:
+        return []
+
+    results = []
+    try:
+        with open(csvs[0], newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Ultralytics CSV keys have leading/trailing whitespace
+                cleaned = {k.strip(): v.strip() for k, v in row.items() if k}
+                try:
+                    results.append(
+                        {
+                            "epoch": int(cleaned.get("epoch", 0)),
+                            "train_box_loss": float(cleaned.get("train/box_loss") or 0),
+                            "train_cls_loss": float(cleaned.get("train/cls_loss") or 0),
+                            "val_box_loss": float(cleaned.get("val/box_loss") or 0),
+                            "val_cls_loss": float(cleaned.get("val/cls_loss") or 0),
+                            "precision": float(
+                                cleaned.get("metrics/precision(B)") or 0
+                            ),
+                            "recall": float(cleaned.get("metrics/recall(B)") or 0),
+                            "map50": float(cleaned.get("metrics/mAP50(B)") or 0),
+                            "map50_95": float(cleaned.get("metrics/mAP50-95(B)") or 0),
+                        }
+                    )
+                except (ValueError, KeyError):
+                    pass
+    except (OSError, csv.Error):
+        pass
+
+    return results
 
 
 # ---------------------------------------------------------------------------
