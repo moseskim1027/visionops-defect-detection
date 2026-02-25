@@ -31,6 +31,7 @@ from prometheus_client import (
     REGISTRY,
     Counter,
     Histogram,
+    Info,
     generate_latest,
 )
 from pydantic import BaseModel
@@ -69,12 +70,23 @@ PREDICTIONS_TOTAL = _get_or_create(
 ERRORS_TOTAL = _get_or_create(
     Counter, "prediction_errors_total", "Total prediction errors"
 )
+MODEL_INFO = _get_or_create(
+    Info, "active_model", "Currently loaded model metadata"
+)
 
 # ---------------------------------------------------------------------------
 # Global model loader (replaced in tests via patching)
 # ---------------------------------------------------------------------------
 
 _loader = ModelLoader()
+
+
+def _update_model_info() -> None:
+    MODEL_INFO.info({
+        "run_id": _loader.run_id,
+        "version": _loader.model_version,
+        "alias": _loader.model_alias,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +110,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
                 tracking_uri,
                 class_map if class_map.exists() else None,
             )
+            _update_model_info()
         except Exception as exc:
             logger.warning(
                 "MLflow load failed (%s) — falling back to local weights", exc
@@ -219,6 +232,7 @@ async def reload_model() -> dict:
                     tracking_uri,
                     class_map if class_map.exists() else None,
                 )
+                _update_model_info()
                 return {"status": "reloaded", "source": "mlflow", "alias": model_alias}
             except Exception as exc:
                 logger.warning("MLflow reload failed (%s) — trying local weights", exc)
