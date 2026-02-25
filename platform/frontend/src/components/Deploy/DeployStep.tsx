@@ -219,7 +219,7 @@ function ModelRegistryPanel() {
       </div>
 
       {/* Divider */}
-      <div className="border-t border-slate-800" />
+      <div className="mt-auto border-t border-slate-800" />
 
       {/* MLflow link */}
       <a
@@ -550,7 +550,7 @@ function InferencePanel() {
       </div>
 
       {/* Divider */}
-      <div className="border-t border-slate-800" />
+      <div className="mt-auto border-t border-slate-800" />
 
       {/* Grafana link */}
       <a
@@ -573,7 +573,11 @@ function InferencePanel() {
 // DeployStep
 // ---------------------------------------------------------------------------
 
-export default function DeployStep() {
+interface DeployStepProps {
+  onRestart: () => void
+}
+
+export default function DeployStep({ onRestart }: DeployStepProps) {
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
       {/* Title */}
@@ -588,6 +592,20 @@ export default function DeployStep() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ModelRegistryPanel />
         <InferencePanel />
+      </div>
+
+      {/* Restart pipeline */}
+      <div className="flex justify-center pt-2">
+        <button
+          onClick={onRestart}
+          className="flex items-center gap-2 px-5 py-2.5 text-sm text-slate-500 hover:text-slate-300 border border-slate-800 hover:border-slate-600 rounded-lg transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Restart Pipeline
+        </button>
       </div>
     </div>
   )

@@ -19,6 +19,9 @@ export default function TrainingStep({ onComplete }: Props) {
   const [infoLoading, setInfoLoading] = useState(true)
   const [showConfig, setShowConfig] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // True when the backend already reported completed/failed on mount (prior run).
+  // In that case we stay on the config view instead of auto-showing progress.
+  const preExistingDone = useRef(false)
 
   useEffect(() => {
     loadInitialData()
@@ -42,6 +45,9 @@ export default function TrainingStep({ onComplete }: Props) {
   const checkExistingTraining = async () => {
     try {
       const status: TrainingStatus = await api.getTrainingStatus()
+      if (status.status === 'completed' || status.status === 'failed') {
+        preExistingDone.current = true
+      }
       setTrainingStatus(status)
       if (status.status === 'running') startPolling()
       if (status.status === 'completed' || status.status === 'failed') {
@@ -108,10 +114,10 @@ export default function TrainingStep({ onComplete }: Props) {
   }
 
   const isTraining = trainingStatus?.status === 'running'
+  const isDone = trainingStatus?.status === 'completed' || trainingStatus?.status === 'failed'
   const showProgress = !showConfig && (
     isTraining
-    || trainingStatus?.status === 'completed'
-    || trainingStatus?.status === 'failed'
+    || (!preExistingDone.current && isDone)
   )
 
   return (

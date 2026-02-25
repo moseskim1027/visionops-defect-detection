@@ -80,7 +80,16 @@ export default function App() {
         {currentStep === 'analysis' && (
           <AnalysisStep onComplete={() => { setAnalysisComplete(true); setCurrentStep('deploy') }} />
         )}
-        {currentStep === 'deploy' && <DeployStep />}
+        {currentStep === 'deploy' && (
+          <DeployStep onRestart={() => {
+            setDataPrepComplete(false)
+            setDataCardComplete(false)
+            setTrainingComplete(false)
+            setEvaluationComplete(false)
+            setAnalysisComplete(false)
+            setCurrentStep('data')
+          }} />
+        )}
       </main>
     </div>
   )
