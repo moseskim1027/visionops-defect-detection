@@ -4,16 +4,11 @@ import type { PoorSample } from '../../types'
 interface Props {
   samples: PoorSample[]
   loading: boolean
-  cols?: 2 | 3 | 4
 }
 
-const GRID_COLS = {
-  2: 'grid-cols-2',
-  3: 'grid-cols-3',
-  4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
-} as const
+const GRID_SIZE = 9  // always 3×3
 
-export default function PoorSamples({ samples, loading, cols = 3 }: Props) {
+export default function PoorSamples({ samples, loading }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
 
   useEffect(() => {
@@ -27,64 +22,71 @@ export default function PoorSamples({ samples, loading, cols = 3 }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [lightboxIdx, samples.length])
 
-  if (loading) {
-    return (
-      <div className={`grid ${GRID_COLS[cols]} gap-3`}>
-        {Array.from({ length: cols * 2 }).map((_, i) => (
-          <div key={i} className="aspect-square bg-slate-800 rounded-lg animate-pulse" />
-        ))}
-      </div>
-    )
-  }
-
-  if (!samples.length) {
-    return (
-      <div className="rounded-xl border border-slate-800 p-8 text-center text-slate-500 text-sm">
-        No poor-performing samples — run validation or train the model first.
-      </div>
-    )
-  }
-
+  // Always 9 slots — loading skeletons, real images, or empty placeholders
+  const slots = Array.from({ length: GRID_SIZE }, (_, i) => (loading ? 'skeleton' : (samples[i] ?? null)))
   const active = lightboxIdx !== null ? samples[lightboxIdx] : null
+  const isEmpty = !loading && samples.length === 0
 
   return (
     <>
-      <div className={`grid ${GRID_COLS[cols]} gap-3`}>
-        {samples.map((sample, i) => (
-          <button
-            key={i}
-            onClick={() => setLightboxIdx(i)}
-            className="group relative bg-slate-800 rounded-xl overflow-hidden border border-slate-700 hover:border-red-600/60 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 text-left"
-          >
-            <img
-              src={`data:image/jpeg;base64,${sample.image_b64}`}
-              alt={sample.filename}
-              className="w-full aspect-square object-cover"
-              loading="lazy"
-            />
-            {/* Gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
-
-            {/* Expand icon */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="bg-black/60 rounded-full p-1.5">
-                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                </svg>
+      <div className="grid grid-cols-3 gap-3">
+        {slots.map((slot, i) => {
+          if (slot === 'skeleton') {
+            return (
+              <div key={i} className="aspect-square bg-slate-800 rounded-xl animate-pulse" />
+            )
+          }
+          if (slot === null) {
+            return (
+              <div
+                key={i}
+                className="aspect-square bg-slate-800/20 rounded-xl border border-slate-800/40 flex items-center justify-center"
+              >
+                {isEmpty && i === 4 && (
+                  <span className="text-slate-600 text-xs text-center px-3">
+                    No samples found
+                  </span>
+                )}
               </div>
-            </div>
+            )
+          }
+          const sample = slot as PoorSample
+          return (
+            <button
+              key={i}
+              onClick={() => setLightboxIdx(i)}
+              className="group relative bg-slate-800 rounded-xl overflow-hidden border border-slate-700 hover:border-red-600/60 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 text-left"
+            >
+              <img
+                src={`data:image/jpeg;base64,${sample.image_b64}`}
+                alt={sample.filename}
+                className="w-full aspect-square object-cover"
+                loading="lazy"
+              />
+              {/* Gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
 
-            {/* Bottom info */}
-            <div className="absolute bottom-0 left-0 right-0 p-2.5">
-              <div className="text-white text-xs font-medium truncate">{sample.class_name}</div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <APBadge ap={sample.ap50} />
-                <span className="text-slate-400 text-xs truncate">{sample.filename}</span>
+              {/* Expand icon */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="bg-black/60 rounded-full p-1.5">
+                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  </svg>
+                </div>
               </div>
-            </div>
-          </button>
-        ))}
+
+              {/* Bottom info */}
+              <div className="absolute bottom-0 left-0 right-0 p-2.5">
+                <div className="text-white text-xs font-medium truncate">{sample.class_name}</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <APBadge ap={sample.ap50} />
+                  <span className="text-slate-400 text-xs truncate">{sample.filename}</span>
+                </div>
+              </div>
+            </button>
+          )
+        })}
       </div>
 
       {/* Lightbox */}

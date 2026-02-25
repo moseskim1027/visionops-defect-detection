@@ -88,7 +88,9 @@ export default function App() {
             }}
           />
         )}
-        {currentStep === 'model' && <ModelCardStep />}
+        {currentStep === 'model' && (
+          <ModelCardStep onComplete={() => setCurrentStep('analysis')} />
+        )}
         {currentStep === 'analysis' && <AnalysisStep />}
       </main>
     </div>

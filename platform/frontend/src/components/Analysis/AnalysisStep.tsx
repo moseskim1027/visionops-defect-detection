@@ -121,7 +121,7 @@ export default function AnalysisStep() {
               </span>
             </div>
           </div>
-          <PoorSamples samples={poorSamples} loading={samplesLoading} cols={3} />
+          <PoorSamples samples={poorSamples} loading={samplesLoading} />
         </div>
       </div>
     </div>

@@ -16,6 +16,9 @@ const AP_COLOR = (ap: number) => {
   return '#ef4444'
 }
 
+// Deterministic widths so the skeleton looks like a real bar chart
+const SKELETON_WIDTHS = [72, 48, 61, 35, 83, 27, 55, 68, 41, 76, 30, 53, 65, 38, 22, 70, 45, 57, 33, 60]
+
 export default function ClassMetrics({ classMetrics, loading, selectedClass, onClassClick }: Props) {
   const displayed = classMetrics.slice(0, 30)
 
@@ -23,26 +26,47 @@ export default function ClassMetrics({ classMetrics, loading, selectedClass, onC
     <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 flex flex-col h-full">
       {/* Header */}
       <div className="flex-shrink-0 mb-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">
-            Per-class AP50
-          </h3>
-          {selectedClass && onClassClick && (
-            <button
-              onClick={() => onClassClick(null)}
-              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-            >
-              Clear filter
-            </button>
-          )}
-        </div>
-        <p className="text-xs text-slate-500 mt-0.5">
-          {onClassClick ? 'Click a class to filter samples' : 'Sorted ascending — worst classes first'}
-        </p>
+        {loading ? (
+          <div className="space-y-1.5">
+            <div className="h-3.5 w-28 bg-slate-800 rounded animate-pulse" />
+            <div className="h-3 w-44 bg-slate-800/60 rounded animate-pulse" />
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">
+                Per-class AP50
+              </h3>
+              {selectedClass && onClassClick && (
+                <button
+                  onClick={() => onClassClick(null)}
+                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {onClassClick ? 'Click a class to filter samples' : 'Sorted ascending — worst classes first'}
+            </p>
+          </>
+        )}
       </div>
 
       {loading ? (
-        <div className="flex-1 bg-slate-800 rounded-lg animate-pulse" />
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="space-y-[9px] pt-1">
+            {SKELETON_WIDTHS.map((w, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="w-[88px] h-[10px] bg-slate-800 rounded animate-pulse flex-shrink-0" />
+                <div
+                  className="h-[10px] bg-slate-800 rounded animate-pulse"
+                  style={{ width: `${w}%` }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       ) : classMetrics.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-slate-600 text-sm">
           No metrics — train a model first
