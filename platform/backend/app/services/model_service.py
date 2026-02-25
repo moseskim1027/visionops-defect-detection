@@ -1,0 +1,288 @@
+"""Model card service.
+
+Provides per-class metrics, prediction distribution, and poor-performing
+sample images after training completes.
+"""
+
+from __future__ import annotations
+
+import base64
+import random
+from pathlib import Path
+from typing import Any
+
+import cv2
+import numpy as np
+import yaml
+
+from app.config import MLFLOW_TRACKING_URI, PROCESSED_DIR, RUNS_DIR
+from app.services.training_service import _find_latest_run
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _load_class_names(processed_dir: Path) -> list[str]:
+    yaml_path = processed_dir / "dataset.yaml"
+    if not yaml_path.exists():
+        return []
+    data = yaml.safe_load(yaml_path.read_text())
+    names_raw = data.get("names", {})
+    if isinstance(names_raw, dict):
+        return [names_raw[k] for k in sorted(names_raw)]
+    return list(names_raw)
+
+
+def _bgr_color(class_id: int) -> tuple[int, int, int]:
+    palette = [
+        (0, 200, 255),
+        (30, 200, 255),
+        (60, 200, 255),
+        (90, 200, 255),
+        (120, 200, 255),
+        (150, 200, 255),
+        (180, 200, 255),
+        (210, 200, 255),
+    ]
+    hsv = np.uint8([[palette[class_id % len(palette)]]])
+    bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)[0][0]
+    return int(bgr[0]), int(bgr[1]), int(bgr[2])
+
+
+def _img_to_b64(img_bgr: np.ndarray) -> str:
+    _, buf = cv2.imencode(".jpg", img_bgr, [cv2.IMWRITE_JPEG_QUALITY, 82])
+    return base64.b64encode(buf).decode()
+
+
+# ---------------------------------------------------------------------------
+# Best weights discovery
+# ---------------------------------------------------------------------------
+
+
+def _find_best_weights() -> Path | None:
+    """Return path to the most recent best.pt in runs/detect/."""
+    detect_dir = RUNS_DIR / "detect"
+    if not detect_dir.exists():
+        return None
+    candidates = sorted(
+        detect_dir.glob("train*/weights/best.pt"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
+
+
+# ---------------------------------------------------------------------------
+# Per-class metrics via model.val()
+# ---------------------------------------------------------------------------
+
+_class_metrics_cache: dict[str, Any] | None = None
+
+
+def get_class_metrics(
+    run_id: str | None = None,
+    processed_dir: str | None = None,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    global _class_metrics_cache
+
+    if _class_metrics_cache and not force_refresh:
+        return _class_metrics_cache
+
+    proc = Path(processed_dir) if processed_dir else PROCESSED_DIR
+    class_names = _load_class_names(proc)
+    dataset_yaml = proc / "dataset.yaml"
+
+    weights = _find_best_weights()
+    if not weights or not dataset_yaml.exists():
+        return {"error": "No trained model or dataset found.", "class_metrics": []}
+
+    try:
+        from ultralytics import YOLO
+
+        model = YOLO(str(weights))
+        val_results = model.val(
+            data=str(dataset_yaml),
+            verbose=False,
+            plots=False,
+        )
+        # val_results.box contains per-class stats
+        box = val_results.box
+        ap50_per_class = box.ap50  # shape (n_classes,)
+        ap_per_class = box.ap      # mAP50-95 per class
+        # class indices actually seen
+        seen_indices = box.ap_class_index.tolist() if hasattr(box, "ap_class_index") else list(range(len(ap50_per_class)))
+
+        metrics_list = []
+        for i, cls_id in enumerate(seen_indices):
+            name = class_names[cls_id] if cls_id < len(class_names) else str(cls_id)
+            metrics_list.append(
+                {
+                    "class_id": int(cls_id),
+                    "class_name": name,
+                    "ap50": round(float(ap50_per_class[i]), 4),
+                    "ap50_95": round(float(ap_per_class[i]), 4),
+                }
+            )
+        metrics_list.sort(key=lambda x: x["ap50"])
+
+        overall = {
+            "precision": round(float(box.mp), 4),
+            "recall": round(float(box.mr), 4),
+            "map50": round(float(box.map50), 4),
+            "map50_95": round(float(box.map), 4),
+        }
+
+        result = {
+            "overall": overall,
+            "class_metrics": metrics_list,
+            "weights_path": str(weights),
+        }
+        _class_metrics_cache = result
+        return result
+    except Exception as exc:
+        return {"error": str(exc), "class_metrics": []}
+
+
+# ---------------------------------------------------------------------------
+# Model card summary (from MLflow)
+# ---------------------------------------------------------------------------
+
+
+def get_model_card(run_id: str | None = None) -> dict[str, Any]:
+    rid = run_id or _find_latest_run(status="FINISHED")
+    if not rid:
+        return {"error": "No completed training run found."}
+
+    try:
+        from mlflow.tracking import MlflowClient
+
+        client = MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
+        run = client.get_run(rid)
+        metrics = run.data.metrics
+        params = run.data.params
+        return {
+            "run_id": rid,
+            "status": run.info.status,
+            "metrics": {
+                "precision": round(metrics.get("precision", 0), 4),
+                "recall": round(metrics.get("recall", 0), 4),
+                "map50": round(metrics.get("map50", 0), 4),
+                "map50_95": round(metrics.get("map50_95", 0), 4),
+            },
+            "params": params,
+            "start_time": run.info.start_time,
+            "end_time": run.info.end_time,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Prediction distribution
+# ---------------------------------------------------------------------------
+
+
+def get_prediction_distribution(
+    processed_dir: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return per-class annotation count as a proxy for prediction distribution."""
+    proc = Path(processed_dir) if processed_dir else PROCESSED_DIR
+    class_names = _load_class_names(proc)
+    from collections import Counter
+
+    counts: Counter[int] = Counter()
+    labels_dir = proc / "labels" / "val"
+    if labels_dir.exists():
+        for lf in labels_dir.glob("*.txt"):
+            for line in lf.read_text().splitlines():
+                parts = line.strip().split()
+                if parts:
+                    try:
+                        counts[int(parts[0])] += 1
+                    except ValueError:
+                        pass
+    total = sum(counts.values()) or 1
+    return [
+        {
+            "class_id": cls_id,
+            "class_name": class_names[cls_id] if cls_id < len(class_names) else str(cls_id),
+            "count": cnt,
+            "percentage": round(100 * cnt / total, 1),
+        }
+        for cls_id, cnt in sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Poor-performing samples
+# ---------------------------------------------------------------------------
+
+
+def get_poor_samples(
+    processed_dir: str | None = None,
+    n_classes: int = 5,
+    n_per_class: int = 2,
+) -> list[dict[str, Any]]:
+    """Return sample val images for the worst-AP classes with GT overlaid."""
+    class_metrics = get_class_metrics(processed_dir=processed_dir)
+    if "error" in class_metrics and not class_metrics.get("class_metrics"):
+        return []
+
+    worst = class_metrics["class_metrics"][:n_classes]  # already sorted asc by ap50
+    proc = Path(processed_dir) if processed_dir else PROCESSED_DIR
+    class_names = _load_class_names(proc)
+    images_dir = proc / "images" / "val"
+    labels_dir = proc / "labels" / "val"
+
+    results = []
+    for cls_entry in worst:
+        cls_id = cls_entry["class_id"]
+        # Find val images that contain this class
+        candidates = []
+        for lf in (labels_dir.glob("*.txt") if labels_dir.exists() else []):
+            for line in lf.read_text().splitlines():
+                parts = line.strip().split()
+                if parts and int(parts[0]) == cls_id:
+                    img_path = images_dir / lf.with_suffix(".jpg").name
+                    if img_path.exists():
+                        candidates.append(img_path)
+                    break
+
+        selected = random.sample(candidates, min(n_per_class, len(candidates)))
+        for img_path in selected:
+            label_path = labels_dir / img_path.with_suffix(".txt").name
+            img = cv2.imread(str(img_path))
+            if img is None:
+                continue
+            h, w = img.shape[:2]
+            if label_path.exists():
+                for line in label_path.read_text().splitlines():
+                    parts = line.strip().split()
+                    if len(parts) < 5:
+                        continue
+                    cid = int(parts[0])
+                    cx, cy, bw, bh = map(float, parts[1:5])
+                    x1, y1 = int((cx - bw / 2) * w), int((cy - bh / 2) * h)
+                    x2, y2 = int((cx + bw / 2) * w), int((cy + bh / 2) * h)
+                    color = _bgr_color(cid)
+                    cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+                    cname = class_names[cid] if cid < len(class_names) else str(cid)
+                    cv2.putText(
+                        img, cname, (x1, max(y1 - 4, 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA,
+                    )
+            max_side = 512
+            scale = max_side / max(h, w)
+            if scale < 1.0:
+                img = cv2.resize(img, (int(w * scale), int(h * scale)))
+            results.append(
+                {
+                    "filename": img_path.name,
+                    "class_name": cls_entry["class_name"],
+                    "ap50": cls_entry["ap50"],
+                    "image_b64": _img_to_b64(img),
+                }
+            )
+    return results
