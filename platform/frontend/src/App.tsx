@@ -12,6 +12,7 @@ export default function App() {
   const [dataPrepComplete, setDataPrepComplete] = useState(false)
   const [dataCardComplete, setDataCardComplete] = useState(false)
   const [trainingComplete, setTrainingComplete] = useState(false)
+  const [evaluationComplete, setEvaluationComplete] = useState(false)
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-950">
@@ -59,6 +60,7 @@ export default function App() {
         dataPrepComplete={dataPrepComplete}
         dataCardComplete={dataCardComplete}
         trainingComplete={trainingComplete}
+          evaluationComplete={evaluationComplete}
         onStepChange={setCurrentStep}
       />
 
@@ -89,7 +91,7 @@ export default function App() {
           />
         )}
         {currentStep === 'model' && (
-          <ModelCardStep onComplete={() => setCurrentStep('analysis')} />
+          <ModelCardStep onComplete={() => { setEvaluationComplete(true); setCurrentStep('analysis') }} />
         )}
         {currentStep === 'analysis' && <AnalysisStep />}
       </main>

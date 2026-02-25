@@ -5,6 +5,7 @@ interface Props {
   dataPrepComplete: boolean
   dataCardComplete: boolean
   trainingComplete: boolean
+  evaluationComplete: boolean
   onStepChange: (step: Step) => void
 }
 
@@ -17,7 +18,7 @@ const steps: { id: Step; label: string; description: string }[] = [
 ]
 
 export default function StepNav({
-  currentStep, dataPrepComplete, dataCardComplete, trainingComplete, onStepChange,
+  currentStep, dataPrepComplete, dataCardComplete, trainingComplete, evaluationComplete, onStepChange,
 }: Props) {
   const isUnlocked = (id: Step) => {
     if (id === 'data')     return true
@@ -32,6 +33,7 @@ export default function StepNav({
     if (id === 'data')     return dataPrepComplete
     if (id === 'datacard') return dataCardComplete
     if (id === 'training') return trainingComplete
+    if (id === 'model')    return evaluationComplete
     return false
   }
 
