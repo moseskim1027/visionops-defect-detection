@@ -63,10 +63,29 @@ def get_directory_info(source_dir: str | None = None) -> dict[str, Any]:
     processed = PROCESSED_DIR
 
     categories: list[str] = []
+    product_details: list[dict[str, Any]] = []
     if raw.exists():
         categories = sorted(
             d.name for d in raw.iterdir() if d.is_dir() and not d.name.startswith(".")
         )
+        for cat in categories:
+            cat_dir = raw / cat
+            train_dir = cat_dir / "train"
+            val_dir = cat_dir / "val"
+            has_train = train_dir.exists()
+            has_val = val_dir.exists()
+            has_ann = (train_dir / "_annotations.coco.json").exists() or (
+                val_dir / "_annotations.coco.json"
+            ).exists()
+            product_details.append(
+                {
+                    "name": cat,
+                    "has_train": has_train,
+                    "has_val": has_val,
+                    "has_annotations": has_ann,
+                    "compatible": has_train and has_val and has_ann,
+                }
+            )
 
     is_prepared = (processed / "dataset.yaml").exists()
     num_train = num_val = 0
@@ -80,6 +99,7 @@ def get_directory_info(source_dir: str | None = None) -> dict[str, Any]:
         "raw_dir": str(raw),
         "processed_dir": str(processed),
         "categories": categories,
+        "product_details": product_details,
         "is_prepared": is_prepared,
         "num_train_images": num_train,
         "num_val_images": num_val,
@@ -192,6 +212,7 @@ def get_annotated_samples(
     processed_dir: str | None = None,
     n_samples: int = 12,
     split: str = "val",
+    class_name: str | None = None,
 ) -> list[dict[str, Any]]:
     proc = Path(processed_dir) if processed_dir else PROCESSED_DIR
     images_dir = proc / "images" / split
@@ -202,11 +223,33 @@ def get_annotated_samples(
 
     class_names = _load_class_names(proc)
     all_images = list(images_dir.glob("*.jpg"))
-    # prefer images that have at least one annotation
-    annotated = [
-        p for p in all_images if (labels_dir / p.with_suffix(".txt").name).exists()
-    ]
-    pool = annotated if annotated else all_images
+
+    if class_name is not None:
+        # Find the class_id for the requested class_name
+        target_id: int | None = None
+        for idx, name in enumerate(class_names):
+            if name == class_name:
+                target_id = idx
+                break
+        # Keep only images whose label file contains that class_id
+        if target_id is not None:
+            pool = []
+            for p in all_images:
+                lp = labels_dir / p.with_suffix(".txt").name
+                if lp.exists():
+                    for line in lp.read_text().splitlines():
+                        parts = line.strip().split()
+                        if parts and int(parts[0]) == target_id:
+                            pool.append(p)
+                            break
+        else:
+            pool = []
+    else:
+        annotated = [
+            p for p in all_images if (labels_dir / p.with_suffix(".txt").name).exists()
+        ]
+        pool = annotated if annotated else all_images
+
     selected = random.sample(pool, min(n_samples, len(pool)))
 
     results = []

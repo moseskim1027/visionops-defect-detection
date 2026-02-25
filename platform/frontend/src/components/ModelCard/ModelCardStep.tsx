@@ -62,7 +62,7 @@ export default function ModelCardStep() {
       {/* Title */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white">Model Card</h2>
+          <h2 className="text-2xl font-bold text-white">Evaluation</h2>
           <p className="text-slate-400 mt-1 text-sm">
             Post-training evaluation — overall metrics, per-class AP50, and failure cases.
           </p>

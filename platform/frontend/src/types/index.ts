@@ -1,9 +1,18 @@
-export type Step = 'data' | 'training' | 'model'
+export type Step = 'data' | 'datacard' | 'training' | 'model'
+
+export interface ProductDetail {
+  name: string
+  has_train: boolean
+  has_val: boolean
+  has_annotations: boolean
+  compatible: boolean
+}
 
 export interface DirectoryInfo {
   raw_dir: string
   processed_dir: string
   categories: string[]
+  product_details: ProductDetail[]
   is_prepared: boolean
   num_train_images: number
   num_val_images: number

@@ -40,8 +40,11 @@ export const api = {
 
   getPreparationStatus: () => get<any>('/data/preparation-status'),
 
-  getAnnotatedSamples: (nSamples = 12) =>
-    get<any>('/data/samples', { n_samples: nSamples }),
+  getAnnotatedSamples: (nSamples = 12, className?: string) =>
+    get<any>('/data/samples', {
+      n_samples: nSamples,
+      ...(className ? { class_name: className } : {}),
+    }),
 
   // ── Training ──────────────────────────────────────────────────────────────
   getModelInfo: () => get<any>('/training/model-info'),

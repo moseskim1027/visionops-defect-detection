@@ -2,12 +2,14 @@ import { useState } from 'react'
 import type { Step } from './types'
 import StepNav from './components/StepNav'
 import DataPrepStep from './components/DataPrep/DataPrepStep'
+import DataCardStep from './components/DataCard/DataCardStep'
 import TrainingStep from './components/Training/TrainingStep'
 import ModelCardStep from './components/ModelCard/ModelCardStep'
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<Step>('data')
   const [dataPrepComplete, setDataPrepComplete] = useState(false)
+  const [dataCardComplete, setDataCardComplete] = useState(false)
   const [trainingComplete, setTrainingComplete] = useState(false)
 
   return (
@@ -31,7 +33,6 @@ export default function App() {
 
         <div className="flex-1" />
 
-        {/* External links */}
         <div className="flex items-center gap-2">
           {[
             { label: 'MLflow', href: 'http://localhost:5001' },
@@ -55,6 +56,7 @@ export default function App() {
       <StepNav
         currentStep={currentStep}
         dataPrepComplete={dataPrepComplete}
+        dataCardComplete={dataCardComplete}
         trainingComplete={trainingComplete}
         onStepChange={setCurrentStep}
       />
@@ -65,6 +67,14 @@ export default function App() {
           <DataPrepStep
             onComplete={() => {
               setDataPrepComplete(true)
+              setCurrentStep('datacard')
+            }}
+          />
+        )}
+        {currentStep === 'datacard' && (
+          <DataCardStep
+            onComplete={() => {
+              setDataCardComplete(true)
               setCurrentStep('training')
             }}
           />

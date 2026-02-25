@@ -31,10 +31,12 @@ def annotated_samples(
     n_samples: int = 12,
     split: str = "val",
     processed_dir: str | None = None,
+    class_name: str | None = None,
 ) -> dict[str, Any]:
     samples = data_service.get_annotated_samples(
         processed_dir=processed_dir,
         n_samples=n_samples,
         split=split,
+        class_name=class_name,
     )
     return {"samples": samples, "count": len(samples)}

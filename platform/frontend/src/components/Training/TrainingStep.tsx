@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../api/client'
 import type {
-  ClassCount, EpochResult, MLflowMetrics, ModelInfo, TrainingConfig, TrainingStatus,
+  EpochResult, MLflowMetrics, ModelInfo, TrainingConfig, TrainingStatus,
 } from '../../types'
 import ModelOverview from './ModelOverview'
-import DataCard from './DataCard'
 import TrainingConfigPanel from './TrainingConfig'
 import TrainingProgress from './TrainingProgress'
 
@@ -19,7 +18,6 @@ interface Props {
 export default function TrainingStep({ onComplete }: Props) {
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null)
   const [config, setConfig] = useState<TrainingConfig | null>(null)
-  const [distribution, setDistribution] = useState<ClassCount[]>([])
   const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null)
   const [mlflowMetrics, setMlflowMetrics] = useState<MLflowMetrics | null>(null)
   const [epochResults, setEpochResults] = useState<EpochResult[]>([])
@@ -34,14 +32,12 @@ export default function TrainingStep({ onComplete }: Props) {
   const loadInitialData = async () => {
     setInfoLoading(true)
     try {
-      const [info, cfg, card] = await Promise.all([
+      const [info, cfg] = await Promise.all([
         api.getModelInfo(),
         api.getTrainingConfig(),
-        api.getDataCard(),
       ])
       setModelInfo(info)
       setConfig(cfg)
-      setDistribution(card.distribution ?? [])
     } finally {
       setInfoLoading(false)
     }
@@ -130,10 +126,7 @@ export default function TrainingStep({ onComplete }: Props) {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ModelOverview info={modelInfo} loading={infoLoading} />
-        <DataCard distribution={distribution} loading={infoLoading} />
-      </div>
+      <ModelOverview info={modelInfo} loading={infoLoading} />
 
       <TrainingConfigPanel
         config={config}
@@ -161,7 +154,7 @@ export default function TrainingStep({ onComplete }: Props) {
             onClick={onComplete}
             className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
           >
-            View Model Card
+            View Evaluation
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
