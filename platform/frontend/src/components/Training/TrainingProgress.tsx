@@ -15,7 +15,7 @@ export default function TrainingProgress({ status, epochResults, onStop, onCompl
 
   const totalEpochs = status?.configured_epochs ?? 0
   const completedEpochs = epochResults.length > 0
-    ? epochResults[epochResults.length - 1].epoch + 1
+    ? epochResults[epochResults.length - 1].epoch
     : 0
   const progress = totalEpochs > 0 ? Math.min(100, (completedEpochs / totalEpochs) * 100) : 0
   const elapsed = status?.elapsed_seconds ? formatDuration(status.elapsed_seconds) : null
