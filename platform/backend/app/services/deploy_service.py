@@ -32,14 +32,16 @@ def list_model_versions() -> dict[str, Any]:
         versions = client.search_model_versions(f"name='{MLFLOW_MODEL_NAME}'")
         result = []
         for v in sorted(versions, key=lambda x: int(x.version), reverse=True):
+            metrics, experiment_id = _get_run_info(client, v.run_id)
             result.append(
                 {
                     "version": v.version,
                     "status": v.status,
                     "aliases": version_aliases.get(v.version, []),
                     "run_id": v.run_id,
+                    "experiment_id": experiment_id,
                     "creation_timestamp": v.creation_timestamp,
-                    "metrics": _get_run_metrics(client, v.run_id),
+                    "metrics": metrics,
                 }
             )
         return {"versions": result, "model_name": MLFLOW_MODEL_NAME}
@@ -47,16 +49,18 @@ def list_model_versions() -> dict[str, Any]:
         return {"versions": [], "model_name": MLFLOW_MODEL_NAME, "error": str(exc)}
 
 
-def _get_run_metrics(client: Any, run_id: str) -> dict[str, float]:
+def _get_run_info(client: Any, run_id: str) -> tuple[dict[str, float], str | None]:
+    """Return (metrics, experiment_id) for a run."""
     try:
         run = client.get_run(run_id)
-        return {
+        metrics = {
             "map50": round(run.data.metrics.get("map50", 0), 4),
             "precision": round(run.data.metrics.get("precision", 0), 4),
             "recall": round(run.data.metrics.get("recall", 0), 4),
         }
+        return metrics, run.info.experiment_id
     except Exception:
-        return {}
+        return {}, None
 
 
 def promote_model(version: str) -> dict[str, Any]:

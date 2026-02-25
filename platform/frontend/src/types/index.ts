@@ -165,6 +165,7 @@ export interface ModelVersion {
   status: string
   aliases: string[]
   run_id: string
+  experiment_id?: string
   creation_timestamp: number
   metrics: { map50?: number; precision?: number; recall?: number }
 }

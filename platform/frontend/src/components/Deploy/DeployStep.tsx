@@ -63,6 +63,21 @@ function VersionRow({
         <span className="text-xs text-slate-600 ml-auto flex-shrink-0">{date}</span>
       </div>
 
+      {/* MLflow run link */}
+      {v.experiment_id && v.run_id && (
+        <a
+          href={`http://localhost:5001/#/experiments/${v.experiment_id}/runs/${v.run_id}`}
+          target="_blank"
+          rel="noreferrer"
+          title="View MLflow run"
+          className="flex-shrink-0 p-1.5 text-slate-500 hover:text-[#43C9ED] rounded-md transition-colors"
+        >
+          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+            <path d="M11.883.002a12.044 12.044 0 0 0-9.326 19.463l3.668-2.694A7.573 7.573 0 0 1 12.043 4.45v2.867l6.908-5.14A12 12 0 0 0 11.883.002m9.562 4.533L17.777 7.23a7.573 7.573 0 0 1-5.818 12.322v-2.867l-6.908 5.14a12.046 12.046 0 0 0 16.394-17.29"/>
+          </svg>
+        </a>
+      )}
+
       {/* Promote button */}
       <button
         onClick={() => onPromote(v.version)}
@@ -169,11 +184,11 @@ function ModelRegistryPanel() {
         </div>
       )}
 
-      {/* Version list */}
-      <div className="flex flex-col gap-2">
+      {/* Version list — scrollable past 5 rows */}
+      <div className="flex flex-col gap-2 max-h-[22rem] overflow-y-auto pr-0.5">
         {loading ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-14 bg-slate-800 rounded-lg animate-pulse" />
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-14 bg-slate-800 rounded-lg animate-pulse flex-shrink-0" />
           ))
         ) : versions.length === 0 ? (
           <div className="py-8 text-center text-slate-500 text-sm">
@@ -190,6 +205,23 @@ function ModelRegistryPanel() {
           ))
         )}
       </div>
+
+      {/* Divider */}
+      <div className="border-t border-slate-800" />
+
+      {/* MLflow link */}
+      <a
+        href="http://localhost:5001"
+        target="_blank"
+        rel="noreferrer"
+        className="w-full py-2.5 text-sm font-medium rounded-lg border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-colors flex items-center justify-center gap-2"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+        </svg>
+        View MLflow Registry ↗
+      </a>
     </div>
   )
 }
