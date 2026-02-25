@@ -170,7 +170,7 @@ export default function DataPrepStep({ onComplete }: Props) {
             </h3>
             <DirectoryTree
               categories={dirInfo?.categories ?? []}
-              rawDir={customDir || dirInfo?.raw_dir ?? 'data/raw/vision'}
+              rawDir={customDir || dirInfo?.raw_dir || 'data/raw/vision'}
             />
           </div>
         </div>

@@ -29,7 +29,8 @@ def update_config(body: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.post("/start")
-def start_training(body: dict[str, Any] = {}) -> dict[str, Any]:
+def start_training(body: dict[str, Any] | None = None) -> dict[str, Any]:
+    body = body or {}
     return training_service.start_training(
         dataset_yaml=body.get("dataset_yaml"),
         config_overrides=body.get("config"),

@@ -13,7 +13,8 @@ def directory_info(source_dir: str | None = None) -> dict[str, Any]:
 
 
 @router.post("/prepare")
-def prepare_dataset(body: dict[str, Any] = {}) -> dict[str, Any]:
+def prepare_dataset(body: dict[str, Any] | None = None) -> dict[str, Any]:
+    body = body or {}
     return data_service.start_preparation(
         source_dir=body.get("source_dir"),
         processed_dir=body.get("processed_dir"),

@@ -23,7 +23,6 @@ from app.config import (
     MLFLOW_TRACKING_URI,
     PROCESSED_DIR,
     ROOT_DIR,
-    RUNS_DIR,
 )
 
 # ---------------------------------------------------------------------------
@@ -283,7 +282,6 @@ def _poll_for_run_id(max_wait: int = 60, interval: int = 3) -> None:
 
 def _find_latest_run(status: str = "RUNNING") -> str | None:
     try:
-        import mlflow
         from mlflow.tracking import MlflowClient
 
         client = MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
@@ -317,7 +315,6 @@ def get_training_status() -> dict[str, Any]:
 
 def get_mlflow_metrics(run_id: str) -> dict[str, Any]:
     try:
-        import mlflow
         from mlflow.tracking import MlflowClient
 
         client = MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)

@@ -7,7 +7,6 @@ annotated sample images from the processed YOLO dataset.
 from __future__ import annotations
 
 import base64
-import io
 import os
 import random
 import subprocess
@@ -20,9 +19,8 @@ from typing import Any
 import cv2
 import numpy as np
 import yaml
-from PIL import Image
 
-from app.config import CONFIGS_DIR, PROCESSED_DIR, RAW_DIR, ROOT_DIR
+from app.config import PROCESSED_DIR, RAW_DIR, ROOT_DIR
 
 # ---------------------------------------------------------------------------
 # In-memory preparation state (single-server, no persistence needed)
@@ -94,7 +92,9 @@ def get_directory_info(source_dir: str | None = None) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def start_preparation(source_dir: str | None = None, processed_dir: str | None = None) -> dict[str, Any]:
+def start_preparation(
+    source_dir: str | None = None, processed_dir: str | None = None
+) -> dict[str, Any]:
     if _prep_state["status"] == "running":
         return {"error": "Preparation already running", "state": _prep_state.copy()}
 
@@ -144,7 +144,9 @@ def start_preparation(source_dir: str | None = None, processed_dir: str | None =
                 _prep_state.update(
                     {
                         "status": "failed",
-                        "error": result.stderr[-2000:] if result.stderr else "Unknown error",
+                        "error": result.stderr[-2000:]
+                        if result.stderr
+                        else "Unknown error",
                         "message": "Preparation failed.",
                     }
                 )
@@ -228,13 +230,23 @@ def get_annotated_samples(
                 y2 = int((cy + bh / 2) * h)
                 color = _bgr_color(cls_id)
                 cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-                cls_name = class_names[cls_id] if cls_id < len(class_names) else str(cls_id)
+                cls_name = (
+                    class_names[cls_id] if cls_id < len(class_names) else str(cls_id)
+                )
                 label_text = cls_name
-                (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+                (tw, th), _ = cv2.getTextSize(
+                    label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1
+                )
                 cv2.rectangle(img, (x1, y1 - th - 4), (x1 + tw + 4, y1), color, -1)
                 cv2.putText(
-                    img, label_text, (x1 + 2, y1 - 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA,
+                    img,
+                    label_text,
+                    (x1 + 2, y1 - 2),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.45,
+                    (255, 255, 255),
+                    1,
+                    cv2.LINE_AA,
                 )
                 annotations.append({"class_id": cls_id, "class_name": cls_name})
 

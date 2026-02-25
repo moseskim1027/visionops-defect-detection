@@ -110,9 +110,13 @@ def get_class_metrics(
         # val_results.box contains per-class stats
         box = val_results.box
         ap50_per_class = box.ap50  # shape (n_classes,)
-        ap_per_class = box.ap      # mAP50-95 per class
+        ap_per_class = box.ap  # mAP50-95 per class
         # class indices actually seen
-        seen_indices = box.ap_class_index.tolist() if hasattr(box, "ap_class_index") else list(range(len(ap50_per_class)))
+        seen_indices = (
+            box.ap_class_index.tolist()
+            if hasattr(box, "ap_class_index")
+            else list(range(len(ap50_per_class)))
+        )
 
         metrics_list = []
         for i, cls_id in enumerate(seen_indices):
@@ -207,7 +211,9 @@ def get_prediction_distribution(
     return [
         {
             "class_id": cls_id,
-            "class_name": class_names[cls_id] if cls_id < len(class_names) else str(cls_id),
+            "class_name": class_names[cls_id]
+            if cls_id < len(class_names)
+            else str(cls_id),
             "count": cnt,
             "percentage": round(100 * cnt / total, 1),
         }
@@ -241,7 +247,7 @@ def get_poor_samples(
         cls_id = cls_entry["class_id"]
         # Find val images that contain this class
         candidates = []
-        for lf in (labels_dir.glob("*.txt") if labels_dir.exists() else []):
+        for lf in labels_dir.glob("*.txt") if labels_dir.exists() else []:
             for line in lf.read_text().splitlines():
                 parts = line.strip().split()
                 if parts and int(parts[0]) == cls_id:
@@ -270,8 +276,14 @@ def get_poor_samples(
                     cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                     cname = class_names[cid] if cid < len(class_names) else str(cid)
                     cv2.putText(
-                        img, cname, (x1, max(y1 - 4, 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA,
+                        img,
+                        cname,
+                        (x1, max(y1 - 4, 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.4,
+                        color,
+                        1,
+                        cv2.LINE_AA,
                     )
             max_side = 512
             scale = max_side / max(h, w)
