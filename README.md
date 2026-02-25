@@ -86,6 +86,10 @@ visionops-defect-detection/
 │   └── drift_batches/      # Simulated drift data
 ├── docker/                 # Dockerfiles + inference requirements
 ├── k8s/                    # Kubernetes manifests
+├── platform/
+│   ├── backend/            # FastAPI platform API (port 8001)
+│   ├── frontend/           # React + TypeScript UI (port 3001)
+│   └── docker-compose.yml  # Platform service definitions
 ├── src/
 │   ├── data/               # prepare_dataset, drift_simulator
 │   ├── features/           # Feature extraction utilities
@@ -363,6 +367,88 @@ make drift-report  # save drift_report.html (open in browser)
 - **PostgreSQL** — Airflow metadata DB (`airflow-db` service); data persists in the `airflow-db-data` volume
 - **Shared volumes** — `./src`, `./configs`, `./data`, `./runs`, and `./dags` are bind-mounted so DAG and source changes are live without a rebuild
 - **MLflow integration** — containers use `MLFLOW_TRACKING_URI=http://mlflow:5000` (internal Docker DNS); the host uses `http://localhost:5001`
+
+---
+
+## Platform UI
+
+`platform/` is a data-centric MLOps UI that wraps the existing pipeline in a three-step browser interface. It consists of a FastAPI backend that bridges the Python pipeline and a Vite + React + TypeScript frontend.
+
+```
+platform/
+├── docker-compose.yml              # platform-backend :8001 + platform-frontend :3001
+├── backend/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── app/
+│       ├── main.py                 # FastAPI app with CORS
+│       ├── config.py               # path + service config (env-var driven)
+│       ├── routers/
+│       │   ├── data.py             # /api/data/*
+│       │   ├── training.py         # /api/training/*
+│       │   └── model.py            # /api/model/*
+│       └── services/
+│           ├── data_service.py     # directory introspection, prep subprocess, annotated images
+│           ├── training_service.py # config r/w, background training, MLflow polling
+│           └── model_service.py    # model.val() metrics, prediction distribution, poor samples
+└── frontend/
+    ├── Dockerfile                  # multi-stage: Vite build → nginx
+    ├── nginx.conf                  # SPA fallback + /api proxy to backend
+    └── src/
+        ├── App.tsx                 # step state machine (data → training → model)
+        ├── components/
+        │   ├── StepNav.tsx         # top progress bar with completion state
+        │   ├── DataPrep/           # DirectoryTree · DataPrepStep · AnnotatedImages
+        │   ├── Training/           # ModelOverview · DataCard · TrainingConfig · TrainingProgress
+        │   └── ModelCard/          # MetricsSummary · ClassMetrics · PoorSamples
+        ├── api/client.ts           # typed fetch wrapper (respects VITE_API_URL)
+        └── types/index.ts          # shared TypeScript types
+```
+
+### Step 1 — Data Preparation
+
+- Monospace directory-tree diagram showing the expected `data/raw/vision` layout; root path is configurable and defaults to the auto-detected value
+- One-click COCO → YOLO conversion via `src.data.prepare_dataset`, with live status polling
+- After preparation: a 12-image annotated sample grid with OpenCV-drawn bounding boxes, per-class colour coding, and category badges
+
+### Step 2 — Training
+
+- YOLOv8n model card: architecture, parameter count, GFLOPs, and strengths
+- Data card: Recharts bar chart of annotation frequency across all classes
+- Editable training config (epochs, batch size, learning rate, device, image size) written back to `configs/model.yaml`
+- Live training progress streamed from MLflow at 3-second intervals: epoch progress bar, loss curves (train/val box + cls loss), and detection metrics (Precision / Recall / mAP50 / mAP50-95)
+- External link cards to the MLflow experiment tracker and Grafana dashboard
+
+### Step 3 — Model Card
+
+- Four metric tiles (Precision, Recall, mAP50, mAP50-95) with gradient fills
+- Per-class AP50 bar chart colour-coded by threshold (≥ 70% green · 40–70% amber · < 40% red), powered by `ultralytics model.val()`
+- Prediction distribution chart for the val set
+- Challenging-cases image grid: samples from the worst-AP classes with ground-truth bounding boxes overlaid
+
+### Running the platform
+
+**Docker (alongside the main stack):**
+
+```bash
+docker compose -f docker-compose.yml -f platform/docker-compose.yml up
+# Frontend: http://localhost:3001
+# Backend:  http://localhost:8001
+```
+
+**Local development:**
+
+```bash
+# Terminal 1 — backend
+cd platform/backend
+pip install -r requirements.txt
+ROOT_DIR=$(pwd)/../.. uvicorn app.main:app --reload --port 8001
+
+# Terminal 2 — frontend
+cd platform/frontend
+npm install
+npm run dev   # http://localhost:3001
+```
 
 ---
 
