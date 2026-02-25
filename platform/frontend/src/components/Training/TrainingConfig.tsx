@@ -107,19 +107,6 @@ export default function TrainingConfigPanel({ config, disabled, onStart }: Props
           onChange={v => set('imgsz', v)}
           disabled={disabled}
         />
-        <div>
-          <label className="block text-xs text-slate-400 mb-1.5">Device</label>
-          <select
-            value={effective.device ?? 'cpu'}
-            onChange={e => set('device', e.target.value)}
-            disabled={disabled}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
-          >
-            <option value="cpu">CPU</option>
-            <option value="cuda:0">CUDA GPU 0</option>
-            <option value="mps">Apple MPS</option>
-          </select>
-        </div>
       </div>
 
       {/* Dataset selector */}
