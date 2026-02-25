@@ -1,4 +1,4 @@
-export type Step = 'data' | 'datacard' | 'training' | 'model' | 'analysis'
+export type Step = 'data' | 'datacard' | 'training' | 'model' | 'analysis' | 'deploy'
 
 export interface ProductDetail {
   name: string
@@ -158,4 +158,21 @@ export interface PredictionDistEntry {
   class_name: string
   count: number
   percentage: number
+}
+
+export interface ModelVersion {
+  version: string
+  status: string
+  aliases: string[]
+  run_id: string
+  creation_timestamp: number
+  metrics: { map50?: number; precision?: number; recall?: number }
+}
+
+export interface InferenceStatus {
+  status: string
+  model_loaded: boolean
+  error?: string
+  alias?: string
+  source?: string
 }

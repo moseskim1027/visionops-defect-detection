@@ -17,3 +17,4 @@ MLFLOW_MODEL_NAME = os.getenv("MLFLOW_MODEL_NAME", "visionops-yolov8n")
 
 GRAFANA_URL = os.getenv("GRAFANA_URL", "http://localhost:3000")
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
+INFERENCE_URL = os.getenv("INFERENCE_URL", "http://inference:8000")

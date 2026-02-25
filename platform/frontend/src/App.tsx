@@ -6,6 +6,7 @@ import DataCardStep from './components/DataCard/DataCardStep'
 import TrainingStep from './components/Training/TrainingStep'
 import ModelCardStep from './components/ModelCard/ModelCardStep'
 import AnalysisStep from './components/Analysis/AnalysisStep'
+import DeployStep from './components/Deploy/DeployStep'
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<Step>('data')
@@ -13,6 +14,7 @@ export default function App() {
   const [dataCardComplete, setDataCardComplete] = useState(false)
   const [trainingComplete, setTrainingComplete] = useState(false)
   const [evaluationComplete, setEvaluationComplete] = useState(false)
+  const [analysisComplete, setAnalysisComplete] = useState(false)
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-950">
@@ -60,7 +62,8 @@ export default function App() {
         dataPrepComplete={dataPrepComplete}
         dataCardComplete={dataCardComplete}
         trainingComplete={trainingComplete}
-          evaluationComplete={evaluationComplete}
+        evaluationComplete={evaluationComplete}
+        analysisComplete={analysisComplete}
         onStepChange={setCurrentStep}
       />
 
@@ -93,7 +96,10 @@ export default function App() {
         {currentStep === 'model' && (
           <ModelCardStep onComplete={() => { setEvaluationComplete(true); setCurrentStep('analysis') }} />
         )}
-        {currentStep === 'analysis' && <AnalysisStep />}
+        {currentStep === 'analysis' && (
+          <AnalysisStep onComplete={() => { setAnalysisComplete(true); setCurrentStep('deploy') }} />
+        )}
+        {currentStep === 'deploy' && <DeployStep />}
       </main>
     </div>
   )

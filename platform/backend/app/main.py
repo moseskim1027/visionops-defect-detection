@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import data, model, training
+from app.routers import data, deploy, model, training
 
 app = FastAPI(
     title="VisionOps Platform API",
@@ -20,6 +20,7 @@ app.add_middleware(
 app.include_router(data.router, prefix="/api/data", tags=["data"])
 app.include_router(training.router, prefix="/api/training", tags=["training"])
 app.include_router(model.router, prefix="/api/model", tags=["model"])
+app.include_router(deploy.router, prefix="/api/deploy", tags=["deploy"])
 
 
 @app.get("/api/health")

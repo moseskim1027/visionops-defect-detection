@@ -6,6 +6,7 @@ interface Props {
   dataCardComplete: boolean
   trainingComplete: boolean
   evaluationComplete: boolean
+  analysisComplete: boolean
   onStepChange: (step: Step) => void
 }
 
@@ -15,10 +16,11 @@ const steps: { id: Step; label: string; description: string }[] = [
   { id: 'training', label: 'Training',     description: 'Configure & launch model training' },
   { id: 'model',    label: 'Evaluation',   description: 'Inspect metrics & training history' },
   { id: 'analysis', label: 'Analysis',     description: 'Per-class AP50 & challenging cases' },
+  { id: 'deploy',   label: 'Deploy',       description: 'Promote model & reload inference' },
 ]
 
 export default function StepNav({
-  currentStep, dataPrepComplete, dataCardComplete, trainingComplete, evaluationComplete, onStepChange,
+  currentStep, dataPrepComplete, dataCardComplete, trainingComplete, evaluationComplete, analysisComplete, onStepChange,
 }: Props) {
   const isUnlocked = (id: Step) => {
     if (id === 'data')     return true
@@ -26,6 +28,7 @@ export default function StepNav({
     if (id === 'training') return dataCardComplete
     if (id === 'model')    return trainingComplete
     if (id === 'analysis') return trainingComplete
+    if (id === 'deploy')   return trainingComplete
     return false
   }
 
@@ -34,6 +37,7 @@ export default function StepNav({
     if (id === 'datacard') return dataCardComplete
     if (id === 'training') return trainingComplete
     if (id === 'model')    return evaluationComplete
+    if (id === 'analysis') return analysisComplete
     return false
   }
 

@@ -81,4 +81,13 @@ export const api = {
 
   getPoorSamples: (className?: string) =>
     get<any>('/model/poor-samples', className ? { class_name: className } : undefined),
+
+  // ── Deploy ────────────────────────────────────────────────────────────────
+  getModelVersions: () => get<any>('/deploy/model-versions'),
+
+  promoteModel: (version: string) => post<any>(`/deploy/promote/${version}`),
+
+  getInferenceStatus: () => get<any>('/deploy/inference-status'),
+
+  reloadInference: () => post<any>('/deploy/reload'),
 }
