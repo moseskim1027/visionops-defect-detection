@@ -95,6 +95,7 @@ def run_training(
     )
 
     with mlflow.start_run(experiment_id=experiment_id) as run:
+        mlflow.set_tag("visionops.managed", "true")
         mlflow.log_params(
             {
                 "model_variant": model_cfg["variant"],

@@ -376,7 +376,7 @@ def _find_latest_run(status: str = "RUNNING") -> str | None:
             return None
         runs = client.search_runs(
             experiment_ids=[experiment.experiment_id],
-            filter_string=f"attributes.status = '{status}'",
+            filter_string=f"attributes.status = '{status}' and tags.`visionops.managed` = 'true'",
             order_by=["start_time DESC"],
             max_results=1,
         )
