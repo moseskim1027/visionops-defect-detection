@@ -81,19 +81,6 @@ export default function AnalysisStep({ onComplete }: Props) {
         </div>
       )}
 
-      {/* Navigate to Deploy */}
-      <div className="flex justify-end">
-        <button
-          onClick={onComplete}
-          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-        >
-          View Deploy
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
-
       {/* Side-by-side: class AP50 left, challenging cases right */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Per-class AP50 */}
@@ -140,6 +127,19 @@ export default function AnalysisStep({ onComplete }: Props) {
           </div>
           <PoorSamples samples={poorSamples} loading={samplesLoading} />
         </div>
+      </div>
+
+      {/* Navigate to Deploy */}
+      <div className="flex justify-end">
+        <button
+          onClick={onComplete}
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+        >
+          View Deploy
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
     </div>
   )

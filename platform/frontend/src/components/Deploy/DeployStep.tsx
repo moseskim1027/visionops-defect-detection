@@ -510,7 +510,7 @@ function InferencePanel() {
 
       {/* Grafana link */}
       <a
-        href="http://localhost:3000"
+        href="http://localhost:3000/d/visionops-inference/visionops-inference?orgId=1&from=now-5m&to=now&timezone=browser&var-datasource=prometheus&refresh=30s"
         target="_blank"
         rel="noreferrer"
         className="w-full py-2.5 text-sm font-medium rounded-lg border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-colors flex items-center justify-center gap-2"
