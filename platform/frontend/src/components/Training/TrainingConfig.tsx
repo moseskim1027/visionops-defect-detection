@@ -57,11 +57,12 @@ export default function TrainingConfigPanel({ config, disabled, onStart }: Props
     : '44 classes'
 
   return (
-    <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 space-y-5">
+    <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 flex flex-col h-full gap-5">
       <h3 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">
         Training Configuration
       </h3>
 
+      <div className="flex-1 flex flex-col gap-5">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <NumberField
           label="Epochs"
@@ -171,6 +172,7 @@ export default function TrainingConfigPanel({ config, disabled, onStart }: Props
           </div>
         )}
       </div>
+      </div>{/* end flex-1 */}
 
       <button
         onClick={handleStart}

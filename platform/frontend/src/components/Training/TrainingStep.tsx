@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../api/client'
-import type {
-  EpochResult, MLflowMetrics, ModelInfo, TrainingConfig, TrainingStatus,
-} from '../../types'
+import type { EpochResult, ModelInfo, TrainingConfig, TrainingStatus } from '../../types'
 import ModelOverview from './ModelOverview'
 import TrainingConfigPanel from './TrainingConfig'
 import TrainingProgress from './TrainingProgress'
 
-const GRAFANA_URL = import.meta.env.VITE_GRAFANA_URL ?? 'http://localhost:3000'
-const MLFLOW_URL = import.meta.env.VITE_MLFLOW_URL ?? 'http://localhost:5001'
 const POLL_INTERVAL = 3000
 
 interface Props {
@@ -19,9 +15,9 @@ export default function TrainingStep({ onComplete }: Props) {
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null)
   const [config, setConfig] = useState<TrainingConfig | null>(null)
   const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null)
-  const [mlflowMetrics, setMlflowMetrics] = useState<MLflowMetrics | null>(null)
   const [epochResults, setEpochResults] = useState<EpochResult[]>([])
   const [infoLoading, setInfoLoading] = useState(true)
+  const [showConfig, setShowConfig] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -48,6 +44,10 @@ export default function TrainingStep({ onComplete }: Props) {
       const status: TrainingStatus = await api.getTrainingStatus()
       setTrainingStatus(status)
       if (status.status === 'running') startPolling()
+      if (status.status === 'completed' || status.status === 'failed') {
+        const res = await api.getEpochResults()
+        setEpochResults(res.results ?? [])
+      }
     } catch {/* ignore */}
   }
 
@@ -62,15 +62,9 @@ export default function TrainingStep({ onComplete }: Props) {
         setTrainingStatus(status)
         setEpochResults(epochRes.results ?? [])
 
-        if (status.run_id) {
-          const m: MLflowMetrics = await api.getMLflowMetrics(status.run_id)
-          if (!m.error) setMlflowMetrics(m)
-        }
-
         if (status.status !== 'running') {
           clearInterval(pollRef.current!)
           pollRef.current = null
-          // Final fetch of epoch results
           const final = await api.getEpochResults()
           setEpochResults(final.results ?? [])
         }
@@ -85,7 +79,7 @@ export default function TrainingStep({ onComplete }: Props) {
   const handleStart = async (cfg: TrainingConfig) => {
     try {
       setEpochResults([])
-      setMlflowMetrics(null)
+      setShowConfig(false)
       const { products, ...configFields } = cfg
       await api.startTraining({
         config: configFields,
@@ -114,8 +108,11 @@ export default function TrainingStep({ onComplete }: Props) {
   }
 
   const isTraining = trainingStatus?.status === 'running'
-  const isComplete = trainingStatus?.status === 'completed'
-  const showProgress = isTraining || isComplete || trainingStatus?.status === 'failed'
+  const showProgress = !showConfig && (
+    isTraining
+    || trainingStatus?.status === 'completed'
+    || trainingStatus?.status === 'failed'
+  )
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
@@ -126,41 +123,25 @@ export default function TrainingStep({ onComplete }: Props) {
         </p>
       </div>
 
-      <ModelOverview info={modelInfo} loading={infoLoading} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ModelOverview info={modelInfo} loading={infoLoading} />
 
-      <TrainingConfigPanel
-        config={config}
-        disabled={isTraining}
-        onStart={handleStart}
-      />
-
-      {showProgress && (
-        <div>
-          <h3 className="text-lg font-semibold text-white mb-4">Training Progress</h3>
+        {showProgress ? (
           <TrainingProgress
             status={trainingStatus}
             epochResults={epochResults}
-            metrics={mlflowMetrics}
-            grafanaUrl={GRAFANA_URL}
-            mlflowUrl={MLFLOW_URL}
             onStop={handleStop}
+            onComplete={onComplete}
+            onReconfigure={() => setShowConfig(true)}
           />
-        </div>
-      )}
-
-      {isComplete && (
-        <div className="flex justify-end">
-          <button
-            onClick={onComplete}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-          >
-            View Evaluation
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
-      )}
+        ) : (
+          <TrainingConfigPanel
+            config={config}
+            disabled={isTraining}
+            onStart={handleStart}
+          />
+        )}
+      </div>
     </div>
   )
 }

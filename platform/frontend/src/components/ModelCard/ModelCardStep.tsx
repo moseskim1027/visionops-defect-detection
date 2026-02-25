@@ -1,23 +1,27 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type { ClassMetric, ModelCard, PoorSample } from '../../types'
+import type { ClassMetric, EpochResult, ModelCard, PoorSample } from '../../types'
 import MetricsSummary from './MetricsSummary'
 import ClassMetrics from './ClassMetrics'
 import PoorSamples from './PoorSamples'
+import TrainingCharts from './TrainingCharts'
 
 export default function ModelCardStep() {
   const [card, setCard] = useState<ModelCard | null>(null)
   const [classMetrics, setClassMetrics] = useState<ClassMetric[]>([])
   const [poorSamples, setPoorSamples] = useState<PoorSample[]>([])
+  const [epochResults, setEpochResults] = useState<EpochResult[]>([])
   const [cardLoading, setCardLoading] = useState(true)
   const [metricsLoading, setMetricsLoading] = useState(true)
   const [samplesLoading, setSamplesLoading] = useState(true)
+  const [epochsLoading, setEpochsLoading] = useState(true)
   const [metricsError, setMetricsError] = useState<string | null>(null)
 
   useEffect(() => {
     loadCard()
     loadClassMetrics()
     loadPoorSamples()
+    loadEpochResults()
   }, [])
 
   const loadCard = async () => {
@@ -57,6 +61,16 @@ export default function ModelCardStep() {
     }
   }
 
+  const loadEpochResults = async () => {
+    setEpochsLoading(true)
+    try {
+      const res = await api.getEpochResults()
+      setEpochResults(res.results ?? [])
+    } finally {
+      setEpochsLoading(false)
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
       {/* Title */}
@@ -68,12 +82,18 @@ export default function ModelCardStep() {
           </p>
         </div>
         <button
-          onClick={() => { loadCard(); loadClassMetrics(); loadPoorSamples() }}
+          onClick={() => { loadCard(); loadClassMetrics(); loadPoorSamples(); loadEpochResults() }}
           className="px-3 py-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-md transition-colors"
         >
           Refresh
         </button>
       </div>
+
+      {/* Training history charts */}
+      <section className="space-y-3">
+        <SectionTitle>Training History</SectionTitle>
+        <TrainingCharts epochResults={epochResults} loading={epochsLoading} />
+      </section>
 
       {/* Overall metrics */}
       <section className="space-y-3">
