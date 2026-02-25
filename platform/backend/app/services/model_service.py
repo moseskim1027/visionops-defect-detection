@@ -1,7 +1,7 @@
 """Model card service.
 
-Provides per-class metrics, prediction distribution, and poor-performing
-sample images after training completes.
+Provides per-class metrics and poor-performing sample images (with both
+ground-truth and predicted bounding boxes) after training completes.
 """
 
 from __future__ import annotations
@@ -15,8 +15,13 @@ import cv2
 import numpy as np
 import yaml
 
-from app.config import MLFLOW_TRACKING_URI, PROCESSED_DIR, RUNS_DIR
-from app.services.training_service import _find_latest_run
+from app.config import (
+    MLFLOW_TRACKING_URI,
+    PROCESSED_DIR,
+    PROCESSED_SUBSET_DIR,
+    RUNS_DIR,
+)
+from app.services.training_service import _find_latest_run, _train_state
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,25 +39,20 @@ def _load_class_names(processed_dir: Path) -> list[str]:
     return list(names_raw)
 
 
-def _bgr_color(class_id: int) -> tuple[int, int, int]:
-    palette = [
-        (0, 200, 255),
-        (30, 200, 255),
-        (60, 200, 255),
-        (90, 200, 255),
-        (120, 200, 255),
-        (150, 200, 255),
-        (180, 200, 255),
-        (210, 200, 255),
-    ]
-    hsv = np.uint8([[palette[class_id % len(palette)]]])
-    bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)[0][0]
-    return int(bgr[0]), int(bgr[1]), int(bgr[2])
-
-
 def _img_to_b64(img_bgr: np.ndarray) -> str:
     _, buf = cv2.imencode(".jpg", img_bgr, [cv2.IMWRITE_JPEG_QUALITY, 82])
     return base64.b64encode(buf).decode()
+
+
+def _get_processed_dir() -> Path:
+    """Return the dataset dir that matches the most recent training run.
+
+    If training was run on a subset (products list set), use the subset dir;
+    otherwise fall back to the full processed dataset.
+    """
+    if _train_state.get("products"):
+        return PROCESSED_SUBSET_DIR
+    return PROCESSED_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +78,7 @@ def _find_best_weights() -> Path | None:
 # ---------------------------------------------------------------------------
 
 _class_metrics_cache: dict[str, Any] | None = None
+_class_metrics_started_at: float | None = None  # training start time at cache build
 
 
 def get_class_metrics(
@@ -85,12 +86,21 @@ def get_class_metrics(
     processed_dir: str | None = None,
     force_refresh: bool = False,
 ) -> dict[str, Any]:
-    global _class_metrics_cache
+    global _class_metrics_cache, _class_metrics_started_at
+
+    # Auto-invalidate cache when a new training run has started
+    current_started_at = _train_state.get("started_at")
+    if (
+        _class_metrics_cache
+        and _class_metrics_started_at is not None
+        and current_started_at != _class_metrics_started_at
+    ):
+        _class_metrics_cache = None
 
     if _class_metrics_cache and not force_refresh:
         return _class_metrics_cache
 
-    proc = Path(processed_dir) if processed_dir else PROCESSED_DIR
+    proc = Path(processed_dir) if processed_dir else _get_processed_dir()
     class_names = _load_class_names(proc)
     dataset_yaml = proc / "dataset.yaml"
 
@@ -107,11 +117,9 @@ def get_class_metrics(
             verbose=False,
             plots=False,
         )
-        # val_results.box contains per-class stats
         box = val_results.box
-        ap50_per_class = box.ap50  # shape (n_classes,)
-        ap_per_class = box.ap  # mAP50-95 per class
-        # class indices actually seen
+        ap50_per_class = box.ap50
+        ap_per_class = box.ap
         seen_indices = (
             box.ap_class_index.tolist()
             if hasattr(box, "ap_class_index")
@@ -144,6 +152,7 @@ def get_class_metrics(
             "weights_path": str(weights),
         }
         _class_metrics_cache = result
+        _class_metrics_started_at = current_started_at
         return result
     except Exception as exc:
         return {"error": str(exc), "class_metrics": []}
@@ -184,46 +193,16 @@ def get_model_card(run_id: str | None = None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Prediction distribution
+# Poor-performing samples — GT + predicted bounding boxes
 # ---------------------------------------------------------------------------
 
-
-def get_prediction_distribution(
-    processed_dir: str | None = None,
-) -> list[dict[str, Any]]:
-    """Return per-class annotation count as a proxy for prediction distribution."""
-    proc = Path(processed_dir) if processed_dir else PROCESSED_DIR
-    class_names = _load_class_names(proc)
-    from collections import Counter
-
-    counts: Counter[int] = Counter()
-    labels_dir = proc / "labels" / "val"
-    if labels_dir.exists():
-        for lf in labels_dir.glob("*.txt"):
-            for line in lf.read_text().splitlines():
-                parts = line.strip().split()
-                if parts:
-                    try:
-                        counts[int(parts[0])] += 1
-                    except ValueError:
-                        pass
-    total = sum(counts.values()) or 1
-    return [
-        {
-            "class_id": cls_id,
-            "class_name": class_names[cls_id]
-            if cls_id < len(class_names)
-            else str(cls_id),
-            "count": cnt,
-            "percentage": round(100 * cnt / total, 1),
-        }
-        for cls_id, cnt in sorted(counts.items(), key=lambda x: x[1], reverse=True)
-    ]
-
-
-# ---------------------------------------------------------------------------
-# Poor-performing samples
-# ---------------------------------------------------------------------------
+# BGR colours and drawing constants
+_GT_COLOR = (50, 220, 50)  # green  — ground truth
+_PRED_COLOR = (30, 120, 255)  # orange — model predictions
+_BOX_THICKNESS = 3
+_FONT = cv2.FONT_HERSHEY_SIMPLEX
+_FONT_SCALE = 0.4
+_FONT_THICKNESS = 1
 
 
 def get_poor_samples(
@@ -231,22 +210,38 @@ def get_poor_samples(
     n_classes: int = 5,
     n_per_class: int = 2,
 ) -> list[dict[str, Any]]:
-    """Return sample val images for the worst-AP classes with GT overlaid."""
+    """Return sample val images for the worst-AP classes.
+
+    Each image has ground-truth boxes (green) and model-predicted boxes
+    (orange) overlaid so the user can visually compare them.
+    """
     class_metrics = get_class_metrics(processed_dir=processed_dir)
     if "error" in class_metrics and not class_metrics.get("class_metrics"):
         return []
 
-    worst = class_metrics["class_metrics"][:n_classes]  # already sorted asc by ap50
-    proc = Path(processed_dir) if processed_dir else PROCESSED_DIR
+    worst = class_metrics["class_metrics"][:n_classes]
+    proc = Path(processed_dir) if processed_dir else _get_processed_dir()
     class_names = _load_class_names(proc)
     images_dir = proc / "images" / "val"
     labels_dir = proc / "labels" / "val"
 
+    # Load YOLO model once for inference
+    yolo_model = None
+    weights = _find_best_weights()
+    if weights:
+        try:
+            from ultralytics import YOLO
+
+            yolo_model = YOLO(str(weights))
+        except Exception:
+            pass
+
     results = []
     for cls_entry in worst:
         cls_id = cls_entry["class_id"]
-        # Find val images that contain this class
-        candidates = []
+
+        # Collect val images that contain this class
+        candidates: list[Path] = []
         for lf in labels_dir.glob("*.txt") if labels_dir.exists() else []:
             for line in lf.read_text().splitlines():
                 parts = line.strip().split()
@@ -263,6 +258,37 @@ def get_poor_samples(
             if img is None:
                 continue
             h, w = img.shape[:2]
+
+            # 1. Draw predicted boxes first (underneath GT)
+            if yolo_model is not None:
+                try:
+                    preds = yolo_model.predict(img, verbose=False, conf=0.25)
+                    for box in preds[0].boxes:
+                        pred_cls = int(box.cls[0])
+                        conf = float(box.conf[0])
+                        x1p, y1p, x2p, y2p = map(int, box.xyxy[0])
+                        cv2.rectangle(
+                            img, (x1p, y1p), (x2p, y2p), _PRED_COLOR, _BOX_THICKNESS
+                        )
+                        pred_name = (
+                            class_names[pred_cls]
+                            if pred_cls < len(class_names)
+                            else str(pred_cls)
+                        )
+                        cv2.putText(
+                            img,
+                            f"{pred_name} {conf:.2f}",
+                            (x1p, min(y2p + 12, h - 2)),
+                            _FONT,
+                            _FONT_SCALE,
+                            _PRED_COLOR,
+                            _FONT_THICKNESS,
+                            cv2.LINE_AA,
+                        )
+                except Exception:
+                    pass
+
+            # 2. Draw ground-truth boxes on top
             if label_path.exists():
                 for line in label_path.read_text().splitlines():
                     parts = line.strip().split()
@@ -270,25 +296,29 @@ def get_poor_samples(
                         continue
                     cid = int(parts[0])
                     cx, cy, bw, bh = map(float, parts[1:5])
-                    x1, y1 = int((cx - bw / 2) * w), int((cy - bh / 2) * h)
-                    x2, y2 = int((cx + bw / 2) * w), int((cy + bh / 2) * h)
-                    color = _bgr_color(cid)
-                    cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+                    x1 = int((cx - bw / 2) * w)
+                    y1 = int((cy - bh / 2) * h)
+                    x2 = int((cx + bw / 2) * w)
+                    y2 = int((cy + bh / 2) * h)
+                    cv2.rectangle(img, (x1, y1), (x2, y2), _GT_COLOR, _BOX_THICKNESS)
                     cname = class_names[cid] if cid < len(class_names) else str(cid)
                     cv2.putText(
                         img,
                         cname,
                         (x1, max(y1 - 4, 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.4,
-                        color,
-                        1,
+                        _FONT,
+                        _FONT_SCALE,
+                        _GT_COLOR,
+                        _FONT_THICKNESS,
                         cv2.LINE_AA,
                     )
+
+            # Resize to max 512px on longest side
             max_side = 512
             scale = max_side / max(h, w)
             if scale < 1.0:
                 img = cv2.resize(img, (int(w * scale), int(h * scale)))
+
             results.append(
                 {
                     "filename": img_path.name,
@@ -297,4 +327,5 @@ def get_poor_samples(
                     "image_b64": _img_to_b64(img),
                 }
             )
+
     return results

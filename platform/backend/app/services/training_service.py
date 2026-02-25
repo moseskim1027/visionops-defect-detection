@@ -43,6 +43,7 @@ _train_state: dict[str, Any] = {
     "pid": None,
     "configured_epochs": None,
     "products": None,  # list[str] | None — None means full dataset
+    "dataset_yaml": None,  # actual dataset path used for this run
 }
 
 # ---------------------------------------------------------------------------
@@ -231,6 +232,7 @@ def start_training(
             "pid": None,
             "configured_epochs": configured_epochs,
             "products": subset_products,
+            "dataset_yaml": dataset,
         }
     )
 

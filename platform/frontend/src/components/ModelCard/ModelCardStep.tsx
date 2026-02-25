@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type {
-  ClassMetric, ModelCard, PoorSample, PredictionDistEntry,
-} from '../../types'
+import type { ClassMetric, ModelCard, PoorSample } from '../../types'
 import MetricsSummary from './MetricsSummary'
 import ClassMetrics from './ClassMetrics'
 import PoorSamples from './PoorSamples'
@@ -10,7 +8,6 @@ import PoorSamples from './PoorSamples'
 export default function ModelCardStep() {
   const [card, setCard] = useState<ModelCard | null>(null)
   const [classMetrics, setClassMetrics] = useState<ClassMetric[]>([])
-  const [distribution, setDistribution] = useState<PredictionDistEntry[]>([])
   const [poorSamples, setPoorSamples] = useState<PoorSample[]>([])
   const [cardLoading, setCardLoading] = useState(true)
   const [metricsLoading, setMetricsLoading] = useState(true)
@@ -20,7 +17,6 @@ export default function ModelCardStep() {
   useEffect(() => {
     loadCard()
     loadClassMetrics()
-    loadDistribution()
     loadPoorSamples()
   }, [])
 
@@ -51,13 +47,6 @@ export default function ModelCardStep() {
     }
   }
 
-  const loadDistribution = async () => {
-    try {
-      const res = await api.getPredictionDistribution()
-      setDistribution(res.distribution ?? [])
-    } catch {/* ignore */}
-  }
-
   const loadPoorSamples = async () => {
     setSamplesLoading(true)
     try {
@@ -75,11 +64,11 @@ export default function ModelCardStep() {
         <div>
           <h2 className="text-2xl font-bold text-white">Model Card</h2>
           <p className="text-slate-400 mt-1 text-sm">
-            Post-training evaluation — metrics by class, prediction distribution, and failure cases.
+            Post-training evaluation — overall metrics, per-class AP50, and failure cases.
           </p>
         </div>
         <button
-          onClick={() => { loadCard(); loadClassMetrics(); loadDistribution(); loadPoorSamples() }}
+          onClick={() => { loadCard(); loadClassMetrics(); loadPoorSamples() }}
           className="px-3 py-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-md transition-colors"
         >
           Refresh
@@ -105,23 +94,26 @@ export default function ModelCardStep() {
         </div>
       )}
 
-      {/* Per-class metrics + distribution */}
+      {/* Per-class AP50 */}
       <section className="space-y-3">
         <SectionTitle>Class-level Analysis</SectionTitle>
-        <ClassMetrics
-          classMetrics={classMetrics}
-          distribution={distribution}
-          loading={metricsLoading}
-        />
+        <ClassMetrics classMetrics={classMetrics} loading={metricsLoading} />
       </section>
 
       {/* Poor samples */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <SectionTitle>Challenging Cases</SectionTitle>
-          <span className="text-xs text-slate-500">
-            Ground truth from classes with lowest AP50
-          </span>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-1.5 rounded-sm bg-green-400 inline-block" />
+              <span className="text-slate-400">Ground truth</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-1.5 rounded-sm bg-orange-400 inline-block" />
+              <span className="text-slate-400">Predicted</span>
+            </span>
+          </div>
         </div>
         <PoorSamples samples={poorSamples} loading={samplesLoading} />
       </section>
