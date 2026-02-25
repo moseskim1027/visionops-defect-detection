@@ -22,6 +22,7 @@ import yaml
 from app.config import (
     CONFIGS_DIR,
     MLFLOW_EXPERIMENT_NAME,
+    MLFLOW_MODEL_NAME,
     MLFLOW_TRACKING_URI,
     PROCESSED_DIR,
     PROCESSED_SUBSET_DIR,
@@ -309,6 +310,9 @@ def start_training(
                 # Re-discover run_id from MLflow if we missed it
                 if not _train_state["run_id"]:
                     _train_state["run_id"] = _find_latest_run(status="FINISHED")
+                # Register the model so it appears in the Deploy step
+                if _train_state["run_id"]:
+                    _register_model(_train_state["run_id"])
             else:
                 _train_state.update(
                     {
@@ -328,6 +332,23 @@ def start_training(
 
     threading.Thread(target=_run, daemon=True).start()
     return {"started": True, "state": _train_state.copy()}
+
+
+def _register_model(run_id: str) -> None:
+    """Register the trained model to the MLflow Model Registry."""
+    try:
+        import mlflow
+        from mlflow.tracking import MlflowClient
+
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        mv = mlflow.register_model(f"runs:/{run_id}/model", MLFLOW_MODEL_NAME)
+        client = MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
+        client.set_registered_model_alias(MLFLOW_MODEL_NAME, "staging", mv.version)
+    except Exception as exc:
+        # Non-fatal — training already succeeded
+        import logging
+
+        logging.getLogger(__name__).warning("Model registration failed: %s", exc)
 
 
 def _poll_for_run_id(max_wait: int = 60, interval: int = 3) -> None:
