@@ -227,7 +227,11 @@ async def reload_model() -> dict:
                         Path(weights_path),
                         class_map if class_map.exists() else None,
                     )
-                    return {"status": "reloaded", "source": "local", "warning": str(exc)}
+                    return {
+                        "status": "reloaded",
+                        "source": "local",
+                        "warning": str(exc),
+                    }
                 return {"status": "error", "detail": str(exc)}
         elif weights_path:
             _loader.load(
