@@ -90,4 +90,8 @@ export const api = {
   getInferenceStatus: () => get<any>('/deploy/inference-status'),
 
   reloadInference: () => post<any>('/deploy/reload'),
+
+  testPredict: () => post<any>('/deploy/test'),
+
+  testBatchPredict: () => post<any>('/deploy/test-batch'),
 }

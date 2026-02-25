@@ -223,11 +223,68 @@ function StatusDot({ status, modelLoaded }: { status: string; modelLoaded: boole
   )
 }
 
+type TestResult =
+  | { kind: 'single'; image: string; source_dir: string; num_detections: number; inference_time_ms: number; detections: { class_name: string; confidence: number }[] }
+  | { kind: 'batch'; source_dir: string; images_sent: number; errors: number; total_detections: number; avg_detections_per_image: number }
+  | { kind: 'error'; message: string }
+
+function TestResultCard({ result }: { result: TestResult }) {
+  if (result.kind === 'error') {
+    return (
+      <div className="text-xs bg-red-950/40 border border-red-800/50 rounded-lg px-3 py-2.5 text-red-300">
+        {result.message}
+      </div>
+    )
+  }
+  if (result.kind === 'single') {
+    const classes = result.detections.map(d => d.class_name)
+    const unique = [...new Set(classes)]
+    return (
+      <div className="text-xs bg-green-950/30 border border-green-800/40 rounded-lg px-3 py-2.5 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-green-400 font-medium">{result.num_detections} detection{result.num_detections !== 1 ? 's' : ''}</span>
+          <span className="text-slate-500">·</span>
+          <span className="text-slate-400 font-mono">{result.image}</span>
+          <span className="text-slate-500 ml-auto">{result.inference_time_ms.toFixed(0)} ms</span>
+        </div>
+        {unique.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {unique.map(c => (
+              <span key={c} className="bg-slate-700/60 text-slate-300 px-1.5 py-0.5 rounded text-[11px]">{c}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+  // batch
+  return (
+    <div className={`text-xs rounded-lg px-3 py-2.5 border space-y-1 ${
+      result.errors > 0
+        ? 'bg-amber-950/30 border-amber-800/40'
+        : 'bg-green-950/30 border-green-800/40'
+    }`}>
+      <div className="flex items-center gap-2">
+        <span className={`font-medium ${result.errors > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+          {result.images_sent} images sent
+        </span>
+        {result.errors > 0 && <span className="text-red-400">{result.errors} errors</span>}
+      </div>
+      <div className="text-slate-400">
+        {result.total_detections} total detections · {result.avg_detections_per_image} avg/image
+        <span className="text-slate-600 ml-2 font-mono">{result.source_dir}</span>
+      </div>
+    </div>
+  )
+}
+
 function InferencePanel() {
   const [status, setStatus] = useState<InferenceStatus | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
   const [reloading, setReloading] = useState(false)
   const [reloadMsg, setReloadMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [testing, setTesting] = useState<'single' | 'batch' | null>(null)
+  const [testResult, setTestResult] = useState<TestResult | null>(null)
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true)
@@ -259,6 +316,42 @@ function InferencePanel() {
       setReloading(false)
     }
   }
+
+  const handleTestSingle = async () => {
+    setTesting('single')
+    setTestResult(null)
+    try {
+      const res = await api.testPredict()
+      if (res.error) {
+        setTestResult({ kind: 'error', message: res.error })
+      } else {
+        setTestResult({ kind: 'single', ...res })
+      }
+    } catch (e: any) {
+      setTestResult({ kind: 'error', message: e.message })
+    } finally {
+      setTesting(null)
+    }
+  }
+
+  const handleTestBatch = async () => {
+    setTesting('batch')
+    setTestResult(null)
+    try {
+      const res = await api.testBatchPredict()
+      if (res.error) {
+        setTestResult({ kind: 'error', message: res.error })
+      } else {
+        setTestResult({ kind: 'batch', ...res })
+      }
+    } catch (e: any) {
+      setTestResult({ kind: 'error', message: e.message })
+    } finally {
+      setTesting(null)
+    }
+  }
+
+  const busy = reloading || testing !== null
 
   return (
     <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 flex flex-col gap-5">
@@ -325,10 +418,12 @@ function InferencePanel() {
       {/* Reload button */}
       <button
         onClick={handleReload}
-        disabled={reloading}
+        disabled={busy}
         className={`w-full py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 ${
           reloading
             ? 'bg-slate-700 text-slate-400 cursor-wait'
+            : busy
+            ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
             : 'bg-indigo-700 hover:bg-indigo-600 text-white'
         }`}
       >
@@ -351,9 +446,81 @@ function InferencePanel() {
         )}
       </button>
 
-      <p className="text-xs text-slate-600 text-center">
-        Loads the <span className="font-mono">production</span> alias from MLflow into the running inference container.
-      </p>
+      {/* Divider */}
+      <div className="border-t border-slate-800" />
+
+      {/* Test buttons */}
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-slate-500 uppercase tracking-wider">Test Endpoint</p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleTestSingle}
+            disabled={busy}
+            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 ${
+              testing === 'single'
+                ? 'bg-slate-700 text-slate-400 cursor-wait'
+                : busy
+                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+            }`}
+          >
+            {testing === 'single' ? (
+              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            Test Single
+          </button>
+          <button
+            onClick={handleTestBatch}
+            disabled={busy}
+            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 ${
+              testing === 'batch'
+                ? 'bg-slate-700 text-slate-400 cursor-wait'
+                : busy
+                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+            }`}
+          >
+            {testing === 'batch' ? (
+              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            )}
+            Test Batch
+          </button>
+        </div>
+
+        {testResult && <TestResultCard result={testResult} />}
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-slate-800" />
+
+      {/* Grafana link */}
+      <a
+        href="http://localhost:3000"
+        target="_blank"
+        rel="noreferrer"
+        className="w-full py-2.5 text-sm font-medium rounded-lg border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-colors flex items-center justify-center gap-2"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        View Grafana Dashboard ↗
+      </a>
     </div>
   )
 }

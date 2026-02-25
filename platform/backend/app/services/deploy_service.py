@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from app.config import INFERENCE_URL, MLFLOW_MODEL_NAME, MLFLOW_TRACKING_URI
+from app.config import INFERENCE_URL, MLFLOW_MODEL_NAME, MLFLOW_TRACKING_URI, RAW_DIR
 
 # ---------------------------------------------------------------------------
 # Model registry
@@ -92,3 +92,89 @@ def reload_inference() -> dict[str, Any]:
         return r.json()
     except Exception as exc:
         return {"error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Inference testing (mirrors make predict / make predict-batch)
+# ---------------------------------------------------------------------------
+
+
+def _find_val_dir():
+    """Return the first usable val image directory under RAW_DIR."""
+    # Prefer Casting/val — same default as the Makefile
+    preferred = RAW_DIR / "Casting" / "val"
+    if preferred.exists() and any(preferred.glob("*.jpg")):
+        return preferred
+    for candidate in sorted(RAW_DIR.glob("*/val")):
+        if any(candidate.glob("*.jpg")):
+            return candidate
+    return None
+
+
+def test_single_predict() -> dict[str, Any]:
+    """Send one image to /predict (mirrors `make predict`)."""
+    val_dir = _find_val_dir()
+    if val_dir is None:
+        return {"error": "No val images found under data/raw/vision"}
+
+    image_path = next(val_dir.glob("*.jpg"))
+    try:
+        with open(image_path, "rb") as f:
+            r = httpx.post(
+                f"{INFERENCE_URL}/predict",
+                files={"file": (image_path.name, f, "image/jpeg")},
+                timeout=30.0,
+            )
+        if r.status_code != 200:
+            return {"error": f"Inference returned {r.status_code}: {r.text}"}
+        data = r.json()
+        return {
+            "success": True,
+            "image": image_path.name,
+            "source_dir": val_dir.parent.name + "/val",
+            "num_detections": data.get("num_detections", 0),
+            "inference_time_ms": data.get("inference_time_ms"),
+            "detections": [
+                {"class_name": d["class_name"], "confidence": round(d["confidence"], 3)}
+                for d in data.get("detections", [])
+            ],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def test_batch_predict() -> dict[str, Any]:
+    """Send all val images to /predict (mirrors `make predict-batch`)."""
+    val_dir = _find_val_dir()
+    if val_dir is None:
+        return {"error": "No val images found under data/raw/vision"}
+
+    images = sorted(val_dir.glob("*.jpg"))
+    sent = 0
+    errors = 0
+    total_detections = 0
+
+    for img in images:
+        try:
+            with open(img, "rb") as f:
+                r = httpx.post(
+                    f"{INFERENCE_URL}/predict",
+                    files={"file": (img.name, f, "image/jpeg")},
+                    timeout=30.0,
+                )
+            if r.status_code == 200:
+                total_detections += r.json().get("num_detections", 0)
+                sent += 1
+            else:
+                errors += 1
+        except Exception:
+            errors += 1
+
+    return {
+        "success": errors == 0,
+        "source_dir": val_dir.parent.name + "/val",
+        "images_sent": sent,
+        "errors": errors,
+        "total_detections": total_detections,
+        "avg_detections_per_image": round(total_detections / sent, 2) if sent else 0,
+    }

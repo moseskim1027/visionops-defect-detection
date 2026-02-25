@@ -27,3 +27,13 @@ def inference_status() -> dict[str, Any]:
 @router.post("/reload")
 def reload() -> dict[str, Any]:
     return deploy_service.reload_inference()
+
+
+@router.post("/test")
+def test_predict() -> dict[str, Any]:
+    return deploy_service.test_single_predict()
+
+
+@router.post("/test-batch")
+def test_batch_predict() -> dict[str, Any]:
+    return deploy_service.test_batch_predict()
