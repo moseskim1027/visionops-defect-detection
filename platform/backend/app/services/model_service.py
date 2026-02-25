@@ -209,17 +209,24 @@ def get_poor_samples(
     processed_dir: str | None = None,
     n_classes: int = 5,
     n_per_class: int = 2,
+    class_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return sample val images for the worst-AP classes.
 
     Each image has ground-truth boxes (green) and model-predicted boxes
     (orange) overlaid so the user can visually compare them.
+    When class_name is provided, return up to 9 samples for that specific class.
     """
     class_metrics = get_class_metrics(processed_dir=processed_dir)
     if "error" in class_metrics and not class_metrics.get("class_metrics"):
         return []
 
-    worst = class_metrics["class_metrics"][:n_classes]
+    all_metrics = class_metrics["class_metrics"]
+    if class_name is not None:
+        worst = [m for m in all_metrics if m["class_name"] == class_name]
+        n_per_class = 9
+    else:
+        worst = all_metrics[:n_classes]
     proc = Path(processed_dir) if processed_dir else _get_processed_dir()
     class_names = _load_class_names(proc)
     images_dir = proc / "images" / "val"

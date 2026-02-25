@@ -1,4 +1,4 @@
-export type Step = 'data' | 'datacard' | 'training' | 'model'
+export type Step = 'data' | 'datacard' | 'training' | 'model' | 'analysis'
 
 export interface ProductDetail {
   name: string

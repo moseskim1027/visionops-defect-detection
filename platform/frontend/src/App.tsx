@@ -5,6 +5,7 @@ import DataPrepStep from './components/DataPrep/DataPrepStep'
 import DataCardStep from './components/DataCard/DataCardStep'
 import TrainingStep from './components/Training/TrainingStep'
 import ModelCardStep from './components/ModelCard/ModelCardStep'
+import AnalysisStep from './components/Analysis/AnalysisStep'
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<Step>('data')
@@ -88,6 +89,7 @@ export default function App() {
           />
         )}
         {currentStep === 'model' && <ModelCardStep />}
+        {currentStep === 'analysis' && <AnalysisStep />}
       </main>
     </div>
   )

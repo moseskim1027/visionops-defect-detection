@@ -79,5 +79,6 @@ export const api = {
 
   getPredictionDistribution: () => get<any>('/model/prediction-distribution'),
 
-  getPoorSamples: () => get<any>('/model/poor-samples'),
+  getPoorSamples: (className?: string) =>
+    get<any>('/model/poor-samples', className ? { class_name: className } : undefined),
 }

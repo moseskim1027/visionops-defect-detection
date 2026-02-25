@@ -36,10 +36,12 @@ def poor_samples(
     processed_dir: str | None = None,
     n_classes: int = 5,
     n_per_class: int = 2,
+    class_name: str | None = None,
 ) -> dict[str, Any]:
     samples = model_service.get_poor_samples(
         processed_dir=processed_dir,
         n_classes=n_classes,
         n_per_class=n_per_class,
+        class_name=class_name,
     )
     return {"samples": samples, "count": len(samples)}

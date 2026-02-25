@@ -12,7 +12,8 @@ const steps: { id: Step; label: string; description: string }[] = [
   { id: 'data',     label: 'Prepare Data', description: 'Convert & validate dataset' },
   { id: 'datacard', label: 'Data Card',    description: 'Class distribution & samples' },
   { id: 'training', label: 'Training',     description: 'Configure & launch model training' },
-  { id: 'model',    label: 'Evaluation',   description: 'Inspect metrics & samples' },
+  { id: 'model',    label: 'Evaluation',   description: 'Inspect metrics & training history' },
+  { id: 'analysis', label: 'Analysis',     description: 'Per-class AP50 & challenging cases' },
 ]
 
 export default function StepNav({
@@ -23,6 +24,7 @@ export default function StepNav({
     if (id === 'datacard') return dataPrepComplete
     if (id === 'training') return dataCardComplete
     if (id === 'model')    return trainingComplete
+    if (id === 'analysis') return trainingComplete
     return false
   }
 
