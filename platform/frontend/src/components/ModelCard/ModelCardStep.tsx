@@ -1,0 +1,134 @@
+import { useEffect, useState } from 'react'
+import { api } from '../../api/client'
+import type {
+  ClassMetric, ModelCard, PoorSample, PredictionDistEntry,
+} from '../../types'
+import MetricsSummary from './MetricsSummary'
+import ClassMetrics from './ClassMetrics'
+import PoorSamples from './PoorSamples'
+
+export default function ModelCardStep() {
+  const [card, setCard] = useState<ModelCard | null>(null)
+  const [classMetrics, setClassMetrics] = useState<ClassMetric[]>([])
+  const [distribution, setDistribution] = useState<PredictionDistEntry[]>([])
+  const [poorSamples, setPoorSamples] = useState<PoorSample[]>([])
+  const [cardLoading, setCardLoading] = useState(true)
+  const [metricsLoading, setMetricsLoading] = useState(true)
+  const [samplesLoading, setSamplesLoading] = useState(true)
+  const [metricsError, setMetricsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    loadCard()
+    loadClassMetrics()
+    loadDistribution()
+    loadPoorSamples()
+  }, [])
+
+  const loadCard = async () => {
+    setCardLoading(true)
+    try {
+      const c = await api.getModelCard()
+      setCard(c.error ? null : c)
+    } finally {
+      setCardLoading(false)
+    }
+  }
+
+  const loadClassMetrics = async () => {
+    setMetricsLoading(true)
+    setMetricsError(null)
+    try {
+      const res = await api.getClassMetrics()
+      if (res.error) {
+        setMetricsError(res.error)
+      } else {
+        setClassMetrics(res.class_metrics ?? [])
+      }
+    } catch (e: any) {
+      setMetricsError(e.message)
+    } finally {
+      setMetricsLoading(false)
+    }
+  }
+
+  const loadDistribution = async () => {
+    try {
+      const res = await api.getPredictionDistribution()
+      setDistribution(res.distribution ?? [])
+    } catch {/* ignore */}
+  }
+
+  const loadPoorSamples = async () => {
+    setSamplesLoading(true)
+    try {
+      const res = await api.getPoorSamples()
+      setPoorSamples(res.samples ?? [])
+    } finally {
+      setSamplesLoading(false)
+    }
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+      {/* Title */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-white">Model Card</h2>
+          <p className="text-slate-400 mt-1 text-sm">
+            Post-training evaluation — metrics by class, prediction distribution, and failure cases.
+          </p>
+        </div>
+        <button
+          onClick={() => { loadCard(); loadClassMetrics(); loadDistribution(); loadPoorSamples() }}
+          className="px-3 py-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-md transition-colors"
+        >
+          Refresh
+        </button>
+      </div>
+
+      {/* Overall metrics */}
+      <section className="space-y-3">
+        <SectionTitle>Overall Performance</SectionTitle>
+        <MetricsSummary card={card} loading={cardLoading} />
+      </section>
+
+      {/* Error state for class metrics */}
+      {metricsError && (
+        <div className="bg-amber-950/40 border border-amber-800/50 rounded-lg p-4 text-sm text-amber-300">
+          <span className="font-medium">Note: </span>
+          Per-class metrics require loading model weights.{' '}
+          {metricsError.includes('No trained model') ? (
+            'No trained model weights found. Complete a training run first.'
+          ) : (
+            <code className="text-xs">{metricsError}</code>
+          )}
+        </div>
+      )}
+
+      {/* Per-class metrics + distribution */}
+      <section className="space-y-3">
+        <SectionTitle>Class-level Analysis</SectionTitle>
+        <ClassMetrics
+          classMetrics={classMetrics}
+          distribution={distribution}
+          loading={metricsLoading}
+        />
+      </section>
+
+      {/* Poor samples */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <SectionTitle>Challenging Cases</SectionTitle>
+          <span className="text-xs text-slate-500">
+            Ground truth from classes with lowest AP50
+          </span>
+        </div>
+        <PoorSamples samples={poorSamples} loading={samplesLoading} />
+      </section>
+    </div>
+  )
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h3 className="text-lg font-semibold text-white">{children}</h3>
+}
