@@ -123,11 +123,30 @@ def run_training(
         )
 
         metrics = parse_yolo_metrics(results.results_dict)
-        mlflow.log_metrics(metrics)
         logger.info("Training metrics: %s", metrics)
 
-        # Log supplementary artefacts
+        # Log per-epoch metrics so MLflow stores the full training history.
+        # Ultralytics writes results.csv with one row per epoch; we replay it
+        # using step=epoch so the metric graphs in MLflow show all epochs.
         save_dir = Path(results.save_dir)
+        results_csv = save_dir / "results.csv"
+        if results_csv.exists():
+            import pandas as pd
+
+            df = pd.read_csv(results_csv)
+            df.columns = [c.strip() for c in df.columns]
+            for _, row in df.iterrows():
+                epoch = int(row["epoch"]) if "epoch" in df.columns else int(_) + 1
+                epoch_metrics = {
+                    clean: float(row[raw])
+                    for raw, clean in _METRIC_ALIASES.items()
+                    if raw in df.columns and pd.notna(row[raw])
+                }
+                if epoch_metrics:
+                    mlflow.log_metrics(epoch_metrics, step=epoch)
+        else:
+            # Fallback: log final values only
+            mlflow.log_metrics(metrics)
         for artefact, subfolder in [
             ("results.csv", "training_logs"),
             ("confusion_matrix.png", "plots"),
