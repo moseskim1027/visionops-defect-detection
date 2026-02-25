@@ -1,15 +1,15 @@
-# Platform services — run alongside the root docker-compose.yml stack.
+# Platform services — start the base stack first, then run this file:
 #
-# Usage (from repo root):
-#   docker compose -f docker-compose.yml -f platform/docker-compose.yml up
+#   Step 1 (from repo root):  docker compose up -d
+#   Step 2 (from repo root):  docker compose -f platform/docker-compose.yml up --build -d
 #
-# Or standalone with external services configured via environment variables.
+# All relative paths below are resolved from platform/ (this file's location).
 
 services:
 
   platform-backend:
     build:
-      context: platform/backend
+      context: ./backend          # platform/backend/
       dockerfile: Dockerfile
     ports:
       - "8001:8001"
@@ -21,28 +21,24 @@ services:
       - GRAFANA_URL=${GRAFANA_URL:-http://localhost:3000}
       - PROMETHEUS_URL=${PROMETHEUS_URL:-http://localhost:9090}
     volumes:
-      - .:/workspace:ro
-      - ./runs:/workspace/runs
-      - ./data:/workspace/data
-    working_dir: /workspace
-    networks:
-      - default
+      - ..:/workspace:ro              # repo root (read-only base)
+      - ../runs:/workspace/runs       # rw override so training can write weights
+      - ../data:/workspace/data       # rw override so prep can write processed data
+      - ../configs:/workspace/configs # rw override so training config can be updated
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
       interval: 15s
       timeout: 5s
       retries: 3
+    networks:
+      - default
 
   platform-frontend:
     build:
-      context: platform/frontend
+      context: ./frontend          # platform/frontend/
       dockerfile: Dockerfile
     ports:
       - "3001:3001"
-    environment:
-      - VITE_API_URL=/api
-      - VITE_GRAFANA_URL=${GRAFANA_URL:-http://localhost:3000}
-      - VITE_MLFLOW_URL=${MLFLOW_UI_URL:-http://localhost:5001}
     depends_on:
       platform-backend:
         condition: service_healthy
