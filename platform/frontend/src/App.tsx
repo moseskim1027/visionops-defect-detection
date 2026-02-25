@@ -35,25 +35,6 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex-1" />
-
-        <div className="flex items-center gap-2">
-          {[
-            { label: 'MLflow', href: 'http://localhost:5001' },
-            { label: 'Grafana', href: 'http://localhost:3000' },
-            { label: 'Prometheus', href: 'http://localhost:9090' },
-          ].map(({ label, href }) => (
-            <a
-              key={label}
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="px-3 py-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-md transition-colors"
-            >
-              {label} ↗
-            </a>
-          ))}
-        </div>
       </header>
 
       {/* Step navigation */}

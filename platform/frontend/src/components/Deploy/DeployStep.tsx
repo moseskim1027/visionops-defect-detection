@@ -63,21 +63,6 @@ function VersionRow({
         <span className="text-xs text-slate-600 ml-auto flex-shrink-0">{date}</span>
       </div>
 
-      {/* MLflow run link */}
-      {v.experiment_id && v.run_id && (
-        <a
-          href={`http://localhost:5001/#/experiments/${v.experiment_id}/runs/${v.run_id}`}
-          target="_blank"
-          rel="noreferrer"
-          title="View MLflow run"
-          className="flex-shrink-0 p-1.5 text-slate-500 hover:text-[#43C9ED] rounded-md transition-colors"
-        >
-          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
-            <path d="M11.883.002a12.044 12.044 0 0 0-9.326 19.463l3.668-2.694A7.573 7.573 0 0 1 12.043 4.45v2.867l6.908-5.14A12 12 0 0 0 11.883.002m9.562 4.533L17.777 7.23a7.573 7.573 0 0 1-5.818 12.322v-2.867l-6.908 5.14a12.046 12.046 0 0 0 16.394-17.29"/>
-          </svg>
-        </a>
-      )}
-
       {/* Promote button */}
       <button
         onClick={() => onPromote(v.version)}
@@ -92,6 +77,21 @@ function VersionRow({
       >
         {isProduction ? 'Active' : promoting ? 'Promoting…' : 'Set Production'}
       </button>
+
+      {/* MLflow run link — far right */}
+      {v.experiment_id && v.run_id && (
+        <a
+          href={`http://localhost:5001/#/experiments/${v.experiment_id}/runs/${v.run_id}`}
+          target="_blank"
+          rel="noreferrer"
+          title="View MLflow run"
+          className="flex-shrink-0 p-1.5 text-slate-500 hover:text-[#43C9ED] rounded-md transition-colors"
+        >
+          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+            <path d="M11.883.002a12.044 12.044 0 0 0-9.326 19.463l3.668-2.694A7.573 7.573 0 0 1 12.043 4.45v2.867l6.908-5.14A12 12 0 0 0 11.883.002m9.562 4.533L17.777 7.23a7.573 7.573 0 0 1-5.818 12.322v-2.867l-6.908 5.14a12.046 12.046 0 0 0 16.394-17.29"/>
+          </svg>
+        </a>
+      )}
     </div>
   )
 }
