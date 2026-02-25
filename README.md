@@ -30,10 +30,6 @@ An end-to-end MLOps platform for industrial defect detection using the [VISION d
                    │  GET  /metrics             │
                    └────────────┬───────────────┘
                                 │ deployed to
-                   ┌────────────▼───────────────┐
-                   │     Kubernetes (kind)      │
-                   │  Deployment + Service      │
-                   └────────────┬───────────────┘
                                 │ metrics scraped by
                    ┌────────────▼───────────────┐
                    │  Prometheus + Grafana      │
@@ -52,7 +48,7 @@ An end-to-end MLOps platform for industrial defect detection using the [VISION d
 | Orchestration    | Apache Airflow 3.1.7    |
 | Model Registry   | MLflow 2.19             |
 | Serving          | FastAPI + Uvicorn       |
-| Containerisation | Docker + Kubernetes     |
+| Containerisation | Docker + Docker Compose |
 | Drift Monitoring | Evidently               |
 | Infra Monitoring | Prometheus + Grafana    |
 | Linting          | Ruff + Black            |
@@ -66,7 +62,6 @@ An end-to-end MLOps platform for industrial defect detection using the [VISION d
 - **Experiment tracking** — hyperparams, metrics, and artifacts in MLflow
 - **Model versioning** — staging → production promotion with metric gate
 - **Containerised serving** — Docker image with CPU-only PyTorch
-- **Kubernetes deployment** — local `kind` cluster
 - **Drift detection** — Evidently monitors bbox, confidence, and pixel distributions
 - **Automated retraining** — monitoring DAG triggers training DAG on drift
 - **CI checks** — lint (ruff + black) and Docker build on every push
@@ -85,7 +80,6 @@ visionops-defect-detection/
 │   ├── processed/          # YOLO-format annotations
 │   └── drift_batches/      # Simulated drift data
 ├── docker/                 # Dockerfiles + inference requirements
-├── k8s/                    # Kubernetes manifests
 ├── platform/
 │   ├── backend/            # FastAPI platform API (port 8001)
 │   ├── frontend/           # React + TypeScript UI (port 3001)
@@ -107,8 +101,6 @@ visionops-defect-detection/
 
 - Python 3.11+
 - Docker Desktop
-- `kind` (Kubernetes in Docker)
-- `kubectl`
 
 ### 1. Clone and create an environment
 
@@ -372,7 +364,7 @@ make drift-report  # save drift_report.html (open in browser)
 
 ## Platform UI
 
-`platform/` is a data-centric MLOps UI that wraps the existing pipeline in a three-step browser interface. It consists of a FastAPI backend that bridges the Python pipeline and a Vite + React + TypeScript frontend.
+`platform/` is a data-centric MLOps UI that wraps the existing pipeline in a five-step browser interface. It consists of a FastAPI backend that bridges the Python pipeline and a Vite + React + TypeScript frontend.
 
 ```
 platform/
@@ -395,36 +387,48 @@ platform/
     ├── Dockerfile                  # multi-stage: Vite build → nginx
     ├── nginx.conf                  # SPA fallback + /api proxy to backend
     └── src/
-        ├── App.tsx                 # step state machine (data → training → model)
+        ├── App.tsx                 # step state machine (data → datacard → training → model → analysis)
         ├── components/
         │   ├── StepNav.tsx         # top progress bar with completion state
         │   ├── DataPrep/           # DirectoryTree · DataPrepStep · AnnotatedImages
-        │   ├── Training/           # ModelOverview · DataCard · TrainingConfig · TrainingProgress
-        │   └── ModelCard/          # MetricsSummary · ClassMetrics · PoorSamples
+        │   ├── DataCard/           # ClassDistribution · DataCardStep
+        │   ├── Training/           # ModelOverview · TrainingConfig · TrainingProgress
+        │   ├── ModelCard/          # MetricsSummary · TrainingCharts · ClassMetrics · PoorSamples
+        │   └── Analysis/           # AnalysisStep
         ├── api/client.ts           # typed fetch wrapper (respects VITE_API_URL)
         └── types/index.ts          # shared TypeScript types
 ```
 
-### Step 1 — Data Preparation
+### Step 1 — Prepare Data
 
 - Monospace directory-tree diagram showing the expected `data/raw/vision` layout; root path is configurable and defaults to the auto-detected value
 - One-click COCO → YOLO conversion via `src.data.prepare_dataset`, with live status polling
-- After preparation: a 12-image annotated sample grid with OpenCV-drawn bounding boxes, per-class colour coding, and category badges
+- After preparation: an annotated sample grid with OpenCV-drawn bounding boxes, per-class colour coding, and category badges
 
-### Step 2 — Training
+### Step 2 — Data Card
 
-- YOLOv8n model card: architecture, parameter count, GFLOPs, and strengths
-- Data card: Recharts bar chart of annotation frequency across all classes
-- Editable training config (epochs, batch size, learning rate, device, image size) written back to `configs/model.yaml`
-- Live training progress streamed from MLflow at 3-second intervals: epoch progress bar, loss curves (train/val box + cls loss), and detection metrics (Precision / Recall / mAP50 / mAP50-95)
-- External link cards to the MLflow experiment tracker and Grafana dashboard
+- Class distribution bar chart (Recharts) with click-to-filter interaction
+- Ground truth annotations panel (3×3 grid) filtered by selected class
+- Click any image to expand in a full-screen lightbox with keyboard navigation
 
-### Step 3 — Model Card
+### Step 3 — Training
 
-- Four metric tiles (Precision, Recall, mAP50, mAP50-95) with gradient fills
+- YOLOv8n model overview: architecture, parameter count, GFLOPs, and strengths
+- Editable training config (epochs, batch size, learning rate, patience, device, image size) written back to `configs/model.yaml`; optional product subset selector
+- Live training progress: epoch progress bar, latest metrics tiles (mAP50, mAP50-95, Precision, Recall, box/cls losses)
+- On completion: "Train Again" to reconfigure or "View Evaluation" to proceed
+
+### Step 4 — Evaluation
+
+- Training history charts: loss curves (train/val box + cls) and detection metrics (Precision · Recall · mAP50 · mAP50-95) per epoch
+- Overall performance metric tiles from MLflow
+
+### Step 5 — Analysis
+
 - Per-class AP50 bar chart colour-coded by threshold (≥ 70% green · 40–70% amber · < 40% red), powered by `ultralytics model.val()`
-- Prediction distribution chart for the val set
-- Challenging-cases image grid: samples from the worst-AP classes with ground-truth bounding boxes overlaid
+- Click any class bar to filter the challenging-cases panel on the right
+- Fixed 3×3 grid of val images with ground-truth (green) and predicted (orange) bounding boxes overlaid
+- Click any image to expand in a full-screen lightbox with keyboard navigation
 
 ### Running the platform
 
@@ -467,6 +471,4 @@ YOLOv8n (~3.2M parameters, ~3MB weights) was chosen over heavier alternatives (F
 
 - Active learning loop (label uncertain predictions)
 - Shadow deployment for A/B model comparison
-- Canary releases via Kubernetes rolling update
-- GPU autoscaling with KEDA
 - CI/CD model promotion via GitHub Actions
