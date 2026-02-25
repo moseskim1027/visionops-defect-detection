@@ -74,7 +74,7 @@ class ModelLoader:
         """Download YOLO weights from MLflow registry and load.
 
         The model must have been logged with :class:`YOLOPyfuncWrapper` which
-        stores weights under the ``weights`` artifact key.
+        stores weights under the ``model/artifacts/`` artifact directory.
         """
         import mlflow  # noqa: PLC0415
         from mlflow.tracking import MlflowClient  # noqa: PLC0415
@@ -86,7 +86,7 @@ class ModelLoader:
         run_id = mv.run_id
 
         local_path = mlflow.artifacts.download_artifacts(
-            f"runs:/{run_id}/model/artifacts/weights"
+            f"runs:/{run_id}/model/artifacts"
         )
         candidates = list(Path(local_path).glob("*.pt"))
         if not candidates:

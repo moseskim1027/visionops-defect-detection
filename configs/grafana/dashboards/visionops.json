@@ -247,20 +247,36 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "fixed",
-            "fixedColor": "blue"
+            "mode": "thresholds"
           },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": 0
-              }
-            ]
+          "custom": {
+            "align": "left",
+            "displayMode": "auto"
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "run_id" },
+            "properties": [
+              { "id": "displayName", "value": "MLflow Run ID" },
+              { "id": "custom.width", "value": 290 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "version" },
+            "properties": [
+              { "id": "displayName", "value": "Version" },
+              { "id": "custom.width", "value": 80 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "alias" },
+            "properties": [
+              { "id": "displayName", "value": "Alias" },
+              { "id": "custom.width", "value": 100 }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 4,
@@ -270,14 +286,8 @@
       },
       "id": 5,
       "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "orientation": "auto",
-        "textMode": "name",
-        "colorMode": "none"
+        "footer": { "show": false },
+        "showHeader": true
       },
       "targets": [
         {
@@ -285,12 +295,23 @@
             "type": "prometheus"
           },
           "expr": "active_model_info",
-          "legendFormat": "run: {{run_id}}  |  v{{version}}  |  alias: {{alias}}",
+          "format": "table",
+          "instant": true,
           "refId": "A"
         }
       ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": ["run_id", "version", "alias"]
+            }
+          }
+        }
+      ],
       "title": "Active Model",
-      "type": "stat"
+      "type": "table"
     }
   ],
   "refresh": "30s",
