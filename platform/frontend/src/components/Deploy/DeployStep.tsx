@@ -585,7 +585,7 @@ export default function DeployStep() {
       </div>
 
       {/* Two-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ModelRegistryPanel />
         <InferencePanel />
       </div>
