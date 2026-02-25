@@ -95,6 +95,7 @@ def run_training(
     )
 
     with mlflow.start_run(experiment_id=experiment_id) as run:
+        mlflow.set_tag("visionops.managed", "true")
         mlflow.log_params(
             {
                 "model_variant": model_cfg["variant"],
@@ -110,24 +111,51 @@ def run_training(
 
         logger.info("Starting YOLOv8n training (run_id=%s)", run.info.run_id)
         model = YOLO(model_cfg["variant"])
-        results = model.train(
-            data=str(dataset_yaml),
-            epochs=train_cfg["epochs"],
-            batch=train_cfg["batch"],
-            imgsz=model_cfg["imgsz"],
-            lr0=train_cfg["lr0"],
-            patience=train_cfg["patience"],
-            workers=train_cfg["workers"],
-            device=train_cfg["device"],
-            verbose=False,
-        )
+        # Ultralytics' built-in MLflow callback calls mlflow.end_run() when
+        # training finishes, which closes our run prematurely and orphans all
+        # subsequent logging. Suppress end_run for the duration of model.train().
+        _real_end_run = mlflow.end_run
+        mlflow.end_run = lambda *a, **kw: None
+        try:
+            results = model.train(
+                data=str(dataset_yaml),
+                epochs=train_cfg["epochs"],
+                batch=train_cfg["batch"],
+                imgsz=model_cfg["imgsz"],
+                lr0=train_cfg["lr0"],
+                patience=train_cfg["patience"],
+                workers=train_cfg["workers"],
+                device=train_cfg["device"],
+                verbose=False,
+            )
+        finally:
+            mlflow.end_run = _real_end_run
 
         metrics = parse_yolo_metrics(results.results_dict)
-        mlflow.log_metrics(metrics)
         logger.info("Training metrics: %s", metrics)
 
-        # Log supplementary artefacts
+        # Log per-epoch metrics so MLflow stores the full training history.
+        # Ultralytics writes results.csv with one row per epoch; we replay it
+        # using step=epoch so the metric graphs in MLflow show all epochs.
         save_dir = Path(results.save_dir)
+        results_csv = save_dir / "results.csv"
+        if results_csv.exists():
+            import pandas as pd
+
+            df = pd.read_csv(results_csv)
+            df.columns = [c.strip() for c in df.columns]
+            for _, row in df.iterrows():
+                epoch = int(row["epoch"]) if "epoch" in df.columns else int(_) + 1
+                epoch_metrics = {
+                    clean: float(row[raw])
+                    for raw, clean in _METRIC_ALIASES.items()
+                    if raw in df.columns and pd.notna(row[raw])
+                }
+                if epoch_metrics:
+                    mlflow.log_metrics(epoch_metrics, step=epoch)
+        else:
+            # Fallback: log final values only
+            mlflow.log_metrics(metrics)
         for artefact, subfolder in [
             ("results.csv", "training_logs"),
             ("confusion_matrix.png", "plots"),
