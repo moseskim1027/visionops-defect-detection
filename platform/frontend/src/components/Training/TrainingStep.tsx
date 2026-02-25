@@ -86,6 +86,7 @@ export default function TrainingStep({ onComplete }: Props) {
     try {
       setEpochResults([])
       setShowConfig(false)
+      preExistingDone.current = false  // new run started in this session
       const { products, ...configFields } = cfg
       await api.startTraining({
         config: configFields,
