@@ -53,10 +53,11 @@ def _get_run_info(client: Any, run_id: str) -> tuple[dict[str, float], str | Non
     """Return (metrics, experiment_id) for a run."""
     try:
         run = client.get_run(run_id)
+        m = run.data.metrics
         metrics = {
-            "map50": round(run.data.metrics.get("map50", 0), 4),
-            "precision": round(run.data.metrics.get("precision", 0), 4),
-            "recall": round(run.data.metrics.get("recall", 0), 4),
+            "map50": round(m.get("map50") or m.get("metrics/mAP50(B)") or m.get("metrics/mAP50B") or 0, 4),
+            "precision": round(m.get("precision") or m.get("metrics/precision(B)") or m.get("metrics/precisionB") or 0, 4),
+            "recall": round(m.get("recall") or m.get("metrics/recall(B)") or m.get("metrics/recallB") or 0, 4),
         }
         return metrics, run.info.experiment_id
     except Exception:

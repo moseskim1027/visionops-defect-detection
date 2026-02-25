@@ -110,17 +110,25 @@ def run_training(
 
         logger.info("Starting YOLOv8n training (run_id=%s)", run.info.run_id)
         model = YOLO(model_cfg["variant"])
-        results = model.train(
-            data=str(dataset_yaml),
-            epochs=train_cfg["epochs"],
-            batch=train_cfg["batch"],
-            imgsz=model_cfg["imgsz"],
-            lr0=train_cfg["lr0"],
-            patience=train_cfg["patience"],
-            workers=train_cfg["workers"],
-            device=train_cfg["device"],
-            verbose=False,
-        )
+        # Ultralytics' built-in MLflow callback calls mlflow.end_run() when
+        # training finishes, which closes our run prematurely and orphans all
+        # subsequent logging. Suppress end_run for the duration of model.train().
+        _real_end_run = mlflow.end_run
+        mlflow.end_run = lambda *a, **kw: None
+        try:
+            results = model.train(
+                data=str(dataset_yaml),
+                epochs=train_cfg["epochs"],
+                batch=train_cfg["batch"],
+                imgsz=model_cfg["imgsz"],
+                lr0=train_cfg["lr0"],
+                patience=train_cfg["patience"],
+                workers=train_cfg["workers"],
+                device=train_cfg["device"],
+                verbose=False,
+            )
+        finally:
+            mlflow.end_run = _real_end_run
 
         metrics = parse_yolo_metrics(results.results_dict)
         logger.info("Training metrics: %s", metrics)
